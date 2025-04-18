@@ -7,6 +7,7 @@ from gen_hdf5 import *
 from dataset import *
 from util import *
 from metric import *
+from discriminators import MultiScaleDiscriminator
 import time
 import math
 import numpy as np
@@ -53,6 +54,7 @@ parser.add_argument("--useLPIPSLoss", dest="useLPIPSLoss", action="store_true", 
 parser.add_argument("--lpipsLossW", type=float, default=0.1)
 parser.add_argument("--useSSIMLoss", dest="useSSIMLoss", action="store_true", default=False)
 parser.add_argument("--ssimLossW", type=float, default=0.1)
+parser.add_argument("--useMultiscaleDiscriminator", dest="useMultiscaleDiscriminator", action="store_true", default=False)
 # args, unknown = parser.parse_known_args()
 args = parser.parse_args()
 
@@ -73,10 +75,15 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
         print("\t\t-AFGSANet LPIPS loss: %s" % args.lpipsLossW)
     if args.useSSIMLoss:
         print("\t\t-AFGSANet SSIM loss: %s" % args.ssimLossW)
+    if args.useMultiscaleDiscriminator:
+        print("\t\t-AFGSANet multiscale discriminator")
     G = AFGSANet(args.inCh, args.auxInCh, args.baseCh, num_sa=args.numSA, block_size=args.blockSize,
                  halo_size=args.haloSize, num_heads=args.numHeads, num_gcp=args.numGradientCheckpoint,
                  padding_mode=padding_mode, curve_order=args.curveOrder).to(device)
-    D = DiscriminatorVGG(3, 64, args.patchSize).to(device)
+    if args.useMultiscaleDiscriminator:
+        D = MultiScaleDiscriminator(in_nc=args.inCh).to(device)
+    else:
+        D = DiscriminatorVGG(3, 64, args.patchSize).to(device)
     if args.loadModel:
         G.load_state_dict(torch.load(os.path.join(args.modelPath, 'G.pt')))
         D.load_state_dict(torch.load(os.path.join(args.modelPath, 'D.pt')))
@@ -84,7 +91,10 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     print_model_structure(D)
 
     l1_loss = L1ReconstructionLoss().to(device)
-    gan_loss = GANLoss('wgan').to(device)
+    if args.useMultiscaleDiscriminator:
+        gan_loss = RaHingeGANLoss().to(device)
+    else:
+        gan_loss = GANLoss('wgan').to(device)
     gp_loss = GradientPenaltyLoss(device).to(device)
     lpips_loss = lpips.LPIPS(net='vgg').to(device) if args.useLPIPSLoss else None
     ssim_loss = SSIMLoss(window_size=11).to(device) if args.useSSIMLoss else None
@@ -126,13 +136,16 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             optimizer_discriminator.zero_grad()
             pred_d_fake = D(output.detach())
             pred_d_real = D(gt)
-            try:
-                loss_d_real = gan_loss(pred_d_real, True)
-                loss_d_fake = gan_loss(pred_d_fake, False)
-                loss_gp = gp_loss(D, gt, output.detach())
-            except:
-                break
-            discriminator_loss = (loss_d_fake + loss_d_real) / 2 + args.gpLossW * loss_gp
+            if args.useMultiscaleDiscriminator:
+                discriminator_loss = gan_loss(pred_d_real, pred_d_fake)
+            else:
+                try:
+                    loss_d_real = gan_loss(pred_d_real, True)
+                    loss_d_fake = gan_loss(pred_d_fake, False)
+                    loss_gp = gp_loss(D, gt, output.detach())
+                except:
+                    break
+                discriminator_loss = (loss_d_fake + loss_d_real) / 2 + args.gpLossW * loss_gp
             discriminator_loss.backward()
             optimizer_discriminator.step()
             accumulated_discriminator_loss += discriminator_loss.item() / args.batchSize
@@ -141,7 +154,10 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             optimizer_generator.zero_grad()
             pred_g_fake = D(output)
             try:
-                loss_g_fake = gan_loss(pred_g_fake, True)
+                if args.useMultiscaleDiscriminator:
+                    loss_g_fake = gan_loss(pred_g_fake, pred_d_real)
+                else:
+                    loss_g_fake = gan_loss(pred_g_fake, True)
                 loss_l1 = l1_loss(output, gt)
             except:
                 break

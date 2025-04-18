@@ -179,3 +179,17 @@ class SSIMLoss(nn.Module):
         scale = torch.maximum(target.max(dim=1, keepdim=True)[0], torch.tensor(1.0, device=target.device))
         return self.ms_ssim(input/scale, target/scale)
 
+
+class RaHingeGANLoss(nn.Module):
+    """
+    Relativistic average hinge loss (RaGAN‑H).
+    Pass lists of patch maps from D(real) and D(fake).
+    """
+    def forward(self, real_preds, fake_preds):
+        loss = 0
+        for pr, pf in zip(real_preds, fake_preds):
+            real_mean = pr.mean([0,2,3], keepdim=True)
+            fake_mean = pf.mean([0,2,3], keepdim=True)
+            loss += (F.relu(1.0 - (pr - fake_mean))).mean()
+            loss += (F.relu(1.0 + (pf - real_mean))).mean()
+        return loss * 0.5
