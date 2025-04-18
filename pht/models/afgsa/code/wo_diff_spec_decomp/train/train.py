@@ -11,6 +11,7 @@ import time
 import math
 import numpy as np
 import argparse
+import lpips
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--inDir", "-i", required=True)
@@ -48,6 +49,8 @@ parser.add_argument("--deterministic", dest="deterministic", action="store_true"
 parser.add_argument("--numGradientCheckpoint", type=int, default=0)  # how many Trans blocks with gradient checkpoint
 parser.add_argument("--curveOrder", type=CurveOrder, default=CurveOrder.RASTER, choices=[
                     CurveOrder.RASTER, CurveOrder.HILBERT, CurveOrder.ZORDER], help="Token-flattening order inside the self-attention block")
+parser.add_argument("--useLPIPS", dest="useLPIPS", action="store_true", default=False)
+parser.add_argument("--lpipsLossW", type=float, default=0.1)
 args, unknown = parser.parse_known_args()
 
 if args.deterministic:
@@ -76,6 +79,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     l1_loss = L1ReconstructionLoss().to(device)
     gan_loss = GANLoss('wgan').to(device)
     gp_loss = GradientPenaltyLoss(device).to(device)
+    lpips_loss = lpips.LPIPSLoss().to(device) if args.useLPIPS else None
 
     milestones = [i * args.lrMilestone - 1 for i in range(1, args.epochs//args.lrMilestone)]
     optimizer_generator = optim.Adam(G.parameters(), lr=args.lrG, betas=(0.9, 0.999), eps=1e-8)
@@ -134,6 +138,9 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             except:
                 break
             generator_loss = args.ganLossW * loss_g_fake + args.l1LossW * loss_l1
+            if args.useLPIPS:
+                loss_lpips = lpips_loss(output, gt)
+                generator_loss += args.lpipsLossW * loss_lpips
             generator_loss.backward()
             optimizer_generator.step()
             accumulated_generator_loss += generator_loss.item() / args.batchSize
