@@ -27,6 +27,10 @@ INTERACTIVE=false
 APP_MODE="afgsa"
 DETERMINISTIC=false
 CURVE_ORDER="raster"
+USE_LPIPS_LOSS=false
+LIPPS_LOSS_W=0.0
+USE_SSIM_LOSS=false
+SSIM_LOSS_W=0.0
 
 cleanup() {
     echo "Process interrupted. Cleaning up..."
@@ -90,6 +94,16 @@ while [[ $# -gt 0 ]]; do
         ;;
     --zorder-curve)
         CURVE_ORDER="zorder"
+        shift
+        ;;
+    --lpips-loss=*)
+        USE_LPIPS_LOSS=true
+        LIPPS_LOSS_W="${1#*=}"
+        shift
+        ;;
+    --ssim-loss=*)
+        USE_SSIM_LOSS=true
+        SSIM_LOSS_W="${1#*=}"
         shift
         ;;
     *)
@@ -192,6 +206,10 @@ log "App mode      : ${APP_MODE}"
 log "Deterministic : ${DETERMINISTIC}"
 log "Curve order   : ${CURVE_ORDER}"
 log "Repatch       : ${REPATCH}"
+log "LPIPS loss    : ${USE_LPIPS_LOSS}"
+log "LPIPS loss W  : ${LIPPS_LOSS_W}"
+log "SSIM loss     : ${USE_SSIM_LOSS}"
+log "SSIM loss W   : ${SSIM_LOSS_W}"
 log "$SEPARATOR"
 
 CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
@@ -201,11 +219,23 @@ CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
   --epochs ${NUM_EPOCHS} \
   --numPatches ${NUM_PATCHES} \
   --patchSize ${PATCH_SIZE} \
-  --appMode ${APP_MODE} \
   --curveOrder ${CURVE_ORDER}"
+
+if false; then
+    CMD+=" --appMode ${APP_MODE}"
+fi
 
 if [[ ${DETERMINISTIC} == true ]]; then
     CMD+=" --deterministic"
+fi
+
+if [[ ${USE_LPIPS_LOSS} == true ]]; then
+    CMD+=" --useLPIPSLoss"
+    CMD+=" --lpipsLossW ${LIPPS_LOSS_W}"
+fi
+if [[ ${USE_SSIM_LOSS} == true ]]; then
+    CMD+=" --useSSIMLoss"
+    CMD+=" --ssimLossW ${SSIM_LOSS_W}"
 fi
 
 if [[ ${USE_PATCHES} == false ]]; then

@@ -49,11 +49,12 @@ parser.add_argument("--deterministic", dest="deterministic", action="store_true"
 parser.add_argument("--numGradientCheckpoint", type=int, default=0)  # how many Trans blocks with gradient checkpoint
 parser.add_argument("--curveOrder", type=CurveOrder, default=CurveOrder.RASTER, choices=[
                     CurveOrder.RASTER, CurveOrder.HILBERT, CurveOrder.ZORDER], help="Token-flattening order inside the self-attention block")
-parser.add_argument("--useLPIPS", dest="useLPIPS", action="store_true", default=False)
+parser.add_argument("--useLPIPSLoss", dest="useLPIPSLoss", action="store_true", default=False)
 parser.add_argument("--lpipsLossW", type=float, default=0.1)
 parser.add_argument("--useSSIMLoss", dest="useSSIMLoss", action="store_true", default=False)
 parser.add_argument("--ssimLossW", type=float, default=0.1)
-args, unknown = parser.parse_known_args()
+# args, unknown = parser.parse_known_args()
+args = parser.parse_args()
 
 if args.deterministic:
     set_global_seed(args.seed)
@@ -68,6 +69,10 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     padding_mode = 'replicate' if args.deterministic else 'reflect'
     print("\t\t-AFGSANet padding mode: %s" % padding_mode)
     print("\t\t-AFGSANet curve order: %s" % args.curveOrder)
+    if args.useLPIPSLoss:
+        print("\t\t-AFGSANet LPIPS loss: %s" % args.lpipsLossW)
+    if args.useSSIMLoss:
+        print("\t\t-AFGSANet SSIM loss: %s" % args.ssimLossW)
     G = AFGSANet(args.inCh, args.auxInCh, args.baseCh, num_sa=args.numSA, block_size=args.blockSize,
                  halo_size=args.haloSize, num_heads=args.numHeads, num_gcp=args.numGradientCheckpoint,
                  padding_mode=padding_mode, curve_order=args.curveOrder).to(device)
@@ -81,7 +86,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     l1_loss = L1ReconstructionLoss().to(device)
     gan_loss = GANLoss('wgan').to(device)
     gp_loss = GradientPenaltyLoss(device).to(device)
-    lpips_loss = lpips.LPIPSLoss().to(device) if args.useLPIPS else None
+    lpips_loss = lpips.LPIPS(net='vgg').to(device) if args.useLPIPSLoss else None
     ssim_loss = SSIMLoss(window_size=11).to(device) if args.useSSIMLoss else None
 
     milestones = [i * args.lrMilestone - 1 for i in range(1, args.epochs//args.lrMilestone)]
@@ -141,8 +146,22 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             except:
                 break
             generator_loss = args.ganLossW * loss_g_fake + args.l1LossW * loss_l1
-            if args.useLPIPS:
-                loss_lpips = lpips_loss(output, gt)
+
+            def assert_nchw(x, name):
+                assert x.ndim == 4 and x.shape[1] == 3, f"{name} not NCHW/3‑ch"
+
+            # before loss calls
+            assert_nchw(output, 'output')
+            assert_nchw(gt, 'gt')
+
+            if args.useLPIPSLoss:
+                def to_lpips_range(x_log):
+                    x_lin = torch.exp(x_log) - 1.0
+                    x_rgb = (x_lin / (x_lin.max() + 1e-6)).clamp(0, 1)
+                    return x_rgb * 2 - 1
+                lpips_output = to_lpips_range(output)
+                lpips_gt = to_lpips_range(gt)
+                loss_lpips = lpips_loss(lpips_output, lpips_gt).mean()
                 generator_loss += args.lpipsLossW * loss_lpips
             if args.useSSIMLoss:
                 loss_ssim = ssim_loss(output, gt)
