@@ -171,7 +171,7 @@ class PerceptualLoss(nn.Module):
 class SSIMLoss(nn.Module):
     def __init__(self, window_size=11):
         super(SSIMLoss, self).__init__()
-        self.ms_ssim_loss = kornia.losses.MultiScaleSSIMLoss(window_size=window_size, reduction='mean')
+        self.ms_ssim = kornia.losses.MS_SSIMLoss(reduction='mean')
 
     def forward(self, input, target):
         # Kornia expects images in [0,1]; your data are log‑mapped radiance.
