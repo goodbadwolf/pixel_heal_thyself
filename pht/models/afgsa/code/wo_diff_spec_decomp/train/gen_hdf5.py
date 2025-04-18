@@ -49,14 +49,13 @@ class Hdf5Constructor:
                         self.exr_paths.append(exr_path)
         assert len(self.exr_paths) == len(self.gt_paths), "#samples does not equal to #gts, check the data!"
 
-        assert type(self.seed) is int, "seed must be an int!"
-        random.seed(self.seed)
         self.paths = [(e, g) for e, g in zip(self.exr_paths, self.gt_paths)]
         random.shuffle(self.paths)
         print("\r\t-Get exr paths: done", end='')
 
 
-    def worker(self, queues, path_mapping, name_shape_mapping, lock, v):
+    def worker(self, worker_id, queues, path_mapping, name_shape_mapping, lock, v):
+        rng = random.Random(self.seed + worker_id)
         while not queues[0].empty() or not queues[1].empty():
             v.value += 1
             print("\r\t-Generating patches: %d / %d" % (v.value, len(self.paths)-3), end='')
@@ -66,7 +65,7 @@ class Hdf5Constructor:
             elif not queues[1].empty():
                 path = queues[1].get()
                 dataset = 'val'
-            cropped, patches = get_cropped_patches(path[0], path[1], self.patch_size, self.num_patches)
+            cropped, patches = get_cropped_patches(path[0], path[1], self.patch_size, self.num_patches, rng)
 
             lock.acquire()
             with h5py.File(path_mapping[dataset], 'a') as hf:
@@ -78,6 +77,7 @@ class Hdf5Constructor:
 
 
     def get_cropped_patches(self):
+        rng = random.Random(self.seed)
         patch_count = 0
         train_save_path = os.path.join(self.save_path, "train.h5")
         val_save_path = os.path.join(self.save_path, "val.h5")
@@ -97,7 +97,7 @@ class Hdf5Constructor:
         for i, n in enumerate(['train', 'val']):
             with h5py.File(path_mapping[n], 'w') as hf:
                 cropped, patches = get_cropped_patches(self.paths[i][0], self.paths[i][1], self.patch_size,
-                                                       self.num_patches)
+                                                       self.num_patches, rng)
                 patch_count += len(cropped)
                 for key in name_shape_mapping.keys():
                     temp = np.array([c[key] for c in cropped])
@@ -108,7 +108,7 @@ class Hdf5Constructor:
         # start processes
         lock = multiprocessing.Lock()  # to ensure only one process writes to the file at once
         done_exr_count = Value("i", 0)
-        pool = [Process(target=self.worker, args=(queues, path_mapping, name_shape_mapping, lock, done_exr_count))
+        pool = [Process(target=self.worker, args=(i, queues, path_mapping, name_shape_mapping, lock, done_exr_count))
                 for i in range(multiprocessing.cpu_count() - 1)]
         for p in pool:
             p.start()

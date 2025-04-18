@@ -2,8 +2,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import pyexr
 from scipy import ndimage
-import random
-from random import randint
+from random import Random
 
 
 # constants
@@ -128,7 +127,7 @@ def get_square_distance(x, y, patches):
     return np.sum(dist**2, axis=1).min()
 
 
-def sample_patches_dart_throwing(exr_shapes, patch_size, num_patches, max_iter=5000):
+def sample_patches_dart_throwing(exr_shapes, patch_size, num_patches, rng:Random, max_iter=5000):
     full_area = float(exr_shapes[0] * exr_shapes[1])
     sample_area = full_area / num_patches
 
@@ -145,8 +144,8 @@ def sample_patches_dart_throwing(exr_shapes, patch_size, num_patches, max_iter=5
         done = False
         while not done:
             for i in range(max_iter):
-                x = randint(x_min, x_max)
-                y = randint(y_min, y_max)
+                x = rng.randint(x_min, x_max)
+                y = rng.randint(y_min, y_max)
                 square_distance = get_square_distance(x, y, patches[:patch_index, :])
                 if square_distance > min_square_distance:
                     patches[patch_index, :] = [x, y]
@@ -191,7 +190,7 @@ def split_patches(patches, region):
     return current[:current_count, :], remain[:remain_count, :]
 
 
-def prune_patches(exr_shapes, patches, patch_size, importance_map):
+def prune_patches(exr_shapes, patches, patch_size, importance_map, rng:Random):
     pruned = np.empty_like(patches)
     remain = np.copy(patches)
     count, error = 0, 0
@@ -199,7 +198,7 @@ def prune_patches(exr_shapes, patches, patch_size, importance_map):
         current, remain = split_patches(remain, region)
         for i in range(current.shape[0]):
             x, y = current[i, 0], current[i, 1]
-            if importance_map[y, x] - error > random.random():
+            if importance_map[y, x] - error > rng.random():
                 pruned[count, :] = [x, y]
                 count += 1
                 error += 1 - importance_map[y, x]
@@ -208,7 +207,7 @@ def prune_patches(exr_shapes, patches, patch_size, importance_map):
     return pruned[:count, :]
 
 
-def importance_sampling(data, patch_size, num_patches):
+def importance_sampling(data, patch_size, num_patches, rng:Random):
     # extract buffers
     buffers = []
     for b in ['noisy', 'normal']:
@@ -220,11 +219,11 @@ def importance_sampling(data, patch_size, num_patches):
     importance_map = get_importance_map(buffers, metrics, weights, patch_size)
 
     # get patches
-    patches = sample_patches_dart_throwing(buffers[0].shape[:2], patch_size, num_patches)
+    patches = sample_patches_dart_throwing(buffers[0].shape[:2], patch_size, num_patches, rng)
 
     # prune patches
     pad = patch_size // 2
-    pruned = np.maximum(0, prune_patches(buffers[0].shape[:2], patches + pad, patch_size, importance_map) - pad)
+    pruned = np.maximum(0, prune_patches(buffers[0].shape[:2], patches + pad, patch_size, importance_map, rng) - pad)
 
     return pruned + pad
 
@@ -243,9 +242,9 @@ def crop(data, position, patch_size):
     return temp
 
 
-def get_cropped_patches(exr_path, gt_path, patch_size, num_patches):
+def get_cropped_patches(exr_path, gt_path, patch_size, num_patches, rng:Random):
     data = preprocess_data(exr_path, gt_path)
-    patches = importance_sampling(data, patch_size, num_patches)
+    patches = importance_sampling(data, patch_size, num_patches, rng)
     cropped = list(crop(data, tuple(position), patch_size) for position in patches)
     return cropped, patches
 

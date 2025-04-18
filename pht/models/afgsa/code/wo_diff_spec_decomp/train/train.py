@@ -47,6 +47,8 @@ parser.add_argument("--baseCh", type=int, default=256)
 parser.add_argument("--numGradientCheckpoint", type=int, default=0)  # how many Trans blocks with gradient checkpoint
 args, unknown = parser.parse_known_args()
 
+set_global_seed(args.seed)
+
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]
 data_ratio = (0.95, 0.05)
@@ -223,21 +225,21 @@ def train(args, data_ratio):
                                       data_ratio)
         constructor.construct_hdf5()
 
-    torch.manual_seed(args.seed)
-    torch.cuda.manual_seed_all(args.seed)
-    torch.backends.cudnn.deterministic = True
-
     train_dataset = Dataset(train_save_path)
     train_num_samples = len(train_dataset)
     # train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=7,
     #                               pin_memory=True)  # original
-    train_dataloader = DataLoaderX(train_dataset, batch_size=args.batchSize, shuffle=True, num_workers=7,
-                                   pin_memory=True)  # prefetch
+    g = torch.Generator()
+    g.manual_seed(args.seed)
+    train_dataloader = DataLoaderX(train_dataset, batch_size=args.batchSize, shuffle=True, generator=g, num_workers=7,
+                                   pin_memory=True, worker_init_fn=lambda wid: set_global_seed(args.seed + wid))  # prefetch
 
     val_dataset = Dataset(val_save_path)
     val_num_samples = len(val_dataset)
+    g = torch.Generator()
+    g.manual_seed(args.seed)
     # val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=shuffle, num_workers=1, pin_memory=True)
-    val_dataloader = DataLoaderX(val_dataset, batch_size=1, shuffle=False, num_workers=7, pin_memory=True)
+    val_dataloader = DataLoaderX(val_dataset, batch_size=1, shuffle=False, generator=g, num_workers=7, pin_memory=True)
 
     # root_save_path = create_folder(os.path.join(args.outDir, 'AFGSA'), still_create=True)  # path to save model, imgs
     root_save_path = create_folder(args.outDir, still_create=False)  # path to save model, imgs
