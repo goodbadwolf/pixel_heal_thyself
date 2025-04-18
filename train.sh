@@ -18,6 +18,7 @@ DATA_MODE=""
 NUM_EPOCHS=0
 CLI_NUM_EPOCHS=0
 USE_PATCHES=true
+REPATCH=false
 NUM_PATCHES=0
 PATCH_SIZE=0
 CLI_PATCH_SIZE=0
@@ -68,6 +69,10 @@ while [[ $# -gt 0 ]]; do
     --patch-size)
         CLI_PATCH_SIZE="$2"
         shift 2
+        ;;
+    --repatch)
+        REPATCH=true
+        shift
         ;;
     *)
         echo "Unknown option: $1" >&2
@@ -136,12 +141,22 @@ esac
 [[ $CLI_NUM_EPOCHS -gt 0 ]] && NUM_EPOCHS=$CLI_NUM_EPOCHS
 [[ $CLI_PATCH_SIZE -gt 0 ]] && PATCH_SIZE=$CLI_PATCH_SIZE
 
+# Patches are shared between all modes
+# We will generate a name for the dir to save them based on the size and count
+PATCHES_ROOT="${INPUT_DIR}/patches"
+PATCHES_DIR="${PATCHES_ROOT}/${PATCH_SIZE}x${PATCH_SIZE}-n${NUM_PATCHES}"
+if [[ ${REPATCH} == true ]]; then
+    rm -rf "${PATCHES_DIR}"
+fi
+mkdir -p "${PATCHES_DIR}"
+
 SEPARATOR=$(printf '─%.0s' {1..100})
 log "Training Data:"
 log "$SEPARATOR"
 log "Base dir   : ${BASE_DIR}"
 log "Dataset    : ${DATA_MODE}"
 log "Input dir  : ${INPUT_DIR}"
+log "Patches dir : ${PATCHES_DIR}"
 log "Output dir : ${OUTPUT_DIR}"
 num_images=$(find "${INPUT_DIR}" -type f -name '*.exr' | wc -l)
 log "Num images : ${num_images}"
@@ -160,7 +175,7 @@ log "$SEPARATOR"
 
 CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
   --inDir ${INPUT_DIR} \
-  --datasetDir ${OUTPUT_DIR}/patches \
+  --datasetDir ${PATCHES_DIR} \
   --outDir ${OUTPUT_DIR} \
   --epochs ${NUM_EPOCHS} \
   --numPatches ${NUM_PATCHES} \
