@@ -1,3 +1,4 @@
+import kornia
 import torch
 import torch.nn as nn
 from torch import autograd
@@ -167,4 +168,14 @@ class PerceptualLoss(nn.Module):
         return loss
 
 
+class SSIMLoss(nn.Module):
+    def __init__(self, window_size=11):
+        super(SSIMLoss, self).__init__()
+        self.ms_ssim_loss = kornia.losses.MultiScaleSSIMLoss(window_size=window_size, reduction='mean')
+
+    def forward(self, input, target):
+        # Kornia expects images in [0,1]; your data are log‑mapped radiance.
+        # Normalise to [0,1] by the empirical max on‑the‑fly.
+        scale = torch.maximum(target.max(dim=1, keepdim=True)[0], torch.tensor(1.0, device=target.device))
+        return self.ms_ssim(input/scale, target/scale)
 

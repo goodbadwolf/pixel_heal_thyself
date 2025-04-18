@@ -8,6 +8,7 @@ dependencies = [
     "einops>=0.8.1",
     "h5py>=3.13.0",
     "hilbertcurve>=2.0.5",
+    "kornia>=0.8.0",
     "lpips>=0.1.4",
     "matplotlib>=3.10.0",
     "opencv-python>=4.11.0.86",

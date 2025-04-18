@@ -51,6 +51,8 @@ parser.add_argument("--curveOrder", type=CurveOrder, default=CurveOrder.RASTER, 
                     CurveOrder.RASTER, CurveOrder.HILBERT, CurveOrder.ZORDER], help="Token-flattening order inside the self-attention block")
 parser.add_argument("--useLPIPS", dest="useLPIPS", action="store_true", default=False)
 parser.add_argument("--lpipsLossW", type=float, default=0.1)
+parser.add_argument("--useSSIMLoss", dest="useSSIMLoss", action="store_true", default=False)
+parser.add_argument("--ssimLossW", type=float, default=0.1)
 args, unknown = parser.parse_known_args()
 
 if args.deterministic:
@@ -80,6 +82,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     gan_loss = GANLoss('wgan').to(device)
     gp_loss = GradientPenaltyLoss(device).to(device)
     lpips_loss = lpips.LPIPSLoss().to(device) if args.useLPIPS else None
+    ssim_loss = SSIMLoss(window_size=11).to(device) if args.useSSIMLoss else None
 
     milestones = [i * args.lrMilestone - 1 for i in range(1, args.epochs//args.lrMilestone)]
     optimizer_generator = optim.Adam(G.parameters(), lr=args.lrG, betas=(0.9, 0.999), eps=1e-8)
@@ -141,6 +144,9 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             if args.useLPIPS:
                 loss_lpips = lpips_loss(output, gt)
                 generator_loss += args.lpipsLossW * loss_lpips
+            if args.useSSIMLoss:
+                loss_ssim = ssim_loss(output, gt)
+                generator_loss += args.ssimLossW * loss_ssim
             generator_loss.backward()
             optimizer_generator.step()
             accumulated_generator_loss += generator_loss.item() / args.batchSize
