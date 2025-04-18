@@ -26,6 +26,7 @@ LOG_FILE="run_log.txt"
 INTERACTIVE=false
 APP_MODE="afgsa"
 DETERMINISTIC=false
+CURVE_ORDER="raster"
 
 cleanup() {
     echo "Process interrupted. Cleaning up..."
@@ -77,6 +78,18 @@ while [[ $# -gt 0 ]]; do
         ;;
     --deterministic)
         DETERMINISTIC=true
+        shift
+        ;;
+    --raster-curve)
+        CURVE_ORDER="raster"
+        shift
+        ;;
+    --hilbert-curve)
+        CURVE_ORDER="hilbert"
+        shift
+        ;;
+    --zorder-curve)
+        CURVE_ORDER="zorder"
         shift
         ;;
     *)
@@ -158,24 +171,27 @@ mkdir -p "${PATCHES_DIR}"
 SEPARATOR=$(printf '─%.0s' {1..100})
 log "Training Data:"
 log "$SEPARATOR"
-log "Base dir   : ${BASE_DIR}"
-log "Dataset    : ${DATA_MODE}"
-log "Input dir  : ${INPUT_DIR}"
+log "Base dir    : ${BASE_DIR}"
+log "Dataset     : ${DATA_MODE}"
+log "Input dir   : ${INPUT_DIR}"
 log "Patches dir : ${PATCHES_DIR}"
-log "Output dir : ${OUTPUT_DIR}"
+log "Output dir  : ${OUTPUT_DIR}"
 num_images=$(find "${INPUT_DIR}" -type f -name '*.exr' | wc -l)
-log "Num images : ${num_images}"
+log "Num images  : ${num_images}"
 log "$SEPARATOR"
 
 log
 log "Training Parameters:"
 log "$SEPARATOR"
-log "Epochs     : ${NUM_EPOCHS}"
-log "Use patches: ${USE_PATCHES}"
-log "Num patches: ${NUM_PATCHES}"
-log "Patch size : ${PATCH_SIZE}"
-log "Interactive: ${INTERACTIVE}"
-log "App mode   : ${APP_MODE}"
+log "Epochs        : ${NUM_EPOCHS}"
+log "Use patches   : ${USE_PATCHES}"
+log "Num patches   : ${NUM_PATCHES}"
+log "Patch size    : ${PATCH_SIZE}"
+log "Interactive   : ${INTERACTIVE}"
+log "App mode      : ${APP_MODE}"
+log "Deterministic : ${DETERMINISTIC}"
+log "Curve order   : ${CURVE_ORDER}"
+log "Repatch       : ${REPATCH}"
 log "$SEPARATOR"
 
 CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
@@ -185,7 +201,8 @@ CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
   --epochs ${NUM_EPOCHS} \
   --numPatches ${NUM_PATCHES} \
   --patchSize ${PATCH_SIZE} \
-  --appMode ${APP_MODE}"
+  --appMode ${APP_MODE} \
+  --curveOrder ${CURVE_ORDER}"
 
 if [[ ${DETERMINISTIC} == true ]]; then
     CMD+=" --deterministic"

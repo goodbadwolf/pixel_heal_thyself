@@ -46,6 +46,8 @@ parser.add_argument("--auxInCh", type=int, default=7)
 parser.add_argument("--baseCh", type=int, default=256)
 parser.add_argument("--deterministic", dest="deterministic", action="store_true", default=False)
 parser.add_argument("--numGradientCheckpoint", type=int, default=0)  # how many Trans blocks with gradient checkpoint
+parser.add_argument("--curveOrder", type=CurveOrder, default=CurveOrder.RASTER, choices=[
+                    CurveOrder.RASTER, CurveOrder.HILBERT, CurveOrder.ZORDER], help="Token-flattening order inside the self-attention block")
 args, unknown = parser.parse_known_args()
 
 if args.deterministic:
@@ -59,9 +61,11 @@ data_ratio = (0.95, 0.05)
 def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_num_samples, root_save_path):
     print("\t-Creating AFGSANet")
     padding_mode = 'replicate' if args.deterministic else 'reflect'
+    print("\t\t-AFGSANet padding mode: %s" % padding_mode)
+    print("\t\t-AFGSANet curve order: %s" % args.curveOrder)
     G = AFGSANet(args.inCh, args.auxInCh, args.baseCh, num_sa=args.numSA, block_size=args.blockSize,
                  halo_size=args.haloSize, num_heads=args.numHeads, num_gcp=args.numGradientCheckpoint,
-                 padding_mode=padding_mode).to(device)
+                 padding_mode=padding_mode, curve_order=args.curveOrder).to(device)
     D = DiscriminatorVGG(3, 64, args.patchSize).to(device)
     if args.loadModel:
         G.load_state_dict(torch.load(os.path.join(args.modelPath, 'G.pt')))

@@ -1,3 +1,5 @@
+from enum import StrEnum
+import math
 import numpy as np
 import torch
 import torch.nn as nn
@@ -5,6 +7,7 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.utils.checkpoint import checkpoint
 from einops import rearrange, repeat
+from hilbertcurve.hilbertcurve import HilbertCurve
 
 
 def print_model_structure(model):
@@ -176,15 +179,87 @@ class DiscriminatorVGG(nn.Module):
         x = self.classifier(x)
         return x
 
+class CurveOrder(StrEnum):
+    RASTER = "raster"
+    HILBERT = "hilbert"
+    ZORDER = "zorder"
+
+
+def make_curve_indices(block_size: int, mode: CurveOrder) -> torch.Tensor:
+    """
+    Return a 1‑D LongTensor that, when used as
+        q = q[:, order, :]
+    rearranges a raster‑flattened block (row‑major) into the
+    chosen curve order.
+    """
+    if mode is CurveOrder.RASTER:
+        return torch.arange(block_size * block_size)
+
+    # helper: (row‑major index) ➜ (x,y)
+    def xy(i):
+        return (i % block_size, i // block_size)
+
+    if mode is CurveOrder.HILBERT:
+        p = int(math.log2(block_size))
+        assert block_size == 1 << p, "Hilbert: block_size must be power of two"
+        hc = HilbertCurve(p, 2)
+
+        # distance along the curve for every raster cell
+        dist = [hc.distance_from_point(xy(i)) for i in range(block_size*block_size)]
+        order = torch.tensor(dist).argsort()
+
+    elif mode is CurveOrder.ZORDER:
+        # Morton code = bit‑interleave of y and x
+        def morton(x, y):
+            def part1(v):
+                v = (v | (v << 8)) & 0x00FF00FF
+                v = (v | (v << 4)) & 0x0F0F0F0F
+                v = (v | (v << 2)) & 0x33333333
+                v = (v | (v << 1)) & 0x55555555
+                return v
+            return (part1(y) << 1) | part1(x)
+
+        mort = [morton(*xy(i)) for i in range(block_size*block_size)]
+        order = torch.tensor(mort).argsort()
+
+    return order.to(torch.long)
+
+def old_make_curve_indices(block_size: int, mode: CurveOrder) -> torch.Tensor:
+    """
+    Return a torch.Tensor of length block_size * block_size holding the Hilbert/Z‑order/raster
+    ordering for a square block of side block_size.
+    """
+    if mode == CurveOrder.RASTER:
+        print("Using raster order")
+        # 0,1,2,3 …
+        return torch.arange(block_size*block_size)
+    elif mode == CurveOrder.HILBERT:
+        print("Using hilbert order")
+        # block_size must be power‑of‑2
+        p = int(math.log2(block_size))
+        hilbert: HilbertCurve = HilbertCurve(p, 2)
+        coords = [hilbert.point_from_distance(
+            d) for d in range(block_size*block_size)]
+    elif mode == CurveOrder.ZORDER:
+        coords = [(d >> 1, d & 1)
+                  for d in range(block_size*block_size)]    # bit‑interleave
+    # Convert (x,y) pairs to linear indices and sort
+    order = sorted(range(block_size*block_size), key=lambda k: coords[k])
+    return torch.tensor(order, dtype=torch.long)
+
 
 class AFGSA(nn.Module):
-    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, bias=False):
+    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, bias=False, curve_order=CurveOrder.RASTER):
         super(AFGSA, self).__init__()
         self.block_size = block_size
         self.halo_size = halo_size
         self.num_heads = num_heads
         self.head_ch = ch // num_heads
         assert ch % num_heads == 0, "ch should be divided by # heads"
+
+        self.curve_order = curve_order
+        self.register_buffer('curve_indices', make_curve_indices(block_size, curve_order))
+        self.register_buffer('inv_curve_indices', torch.argsort(self.curve_indices))
 
         # relative positional embedding: row and column embedding each with dimension 1/2 head_ch
         self.rel_h = nn.Parameter(torch.randn(1, block_size+2*halo_size, 1, self.head_ch//2), requires_grad=True)
@@ -205,6 +280,8 @@ class AFGSA(nn.Module):
         q = self.q_conv(n_aux)
         q = rearrange(q, 'b c (h k1) (w k2) -> (b h w) (k1 k2) c', k1=block, k2=block)
         q *= self.head_ch ** -0.5  # b*#blocks, flattened_query, c
+
+        q = q[:, self.curve_indices, :]
 
         k = self.k_conv(n_aux)
         k = F.unfold(k, kernel_size=block+halo*2, stride=block, padding=halo)
@@ -227,6 +304,9 @@ class AFGSA(nn.Module):
         attn = F.softmax(sim, dim=-1)
         # b*#blocks*#heads, flattened_query, head_ch
         out = torch.einsum('b i j, b j d -> b i d', attn, v)
+
+        out = out[:, self.inv_curve_indices, :]
+
         out = rearrange(out, '(b h w n) (k1 k2) d -> b (n d) (h k1) (w k2)', b=b, h=(h//block), w=(w//block), k1=block, k2=block)
         return out
 
@@ -239,10 +319,10 @@ class AFGSA(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True, padding_mode='reflect'):
+    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True, padding_mode='reflect', curve_order=CurveOrder.RASTER):
         super(TransformerBlock, self).__init__()
         self.checkpoint = checkpoint
-        self.attention = AFGSA(ch, block_size=block_size, halo_size=halo_size, num_heads=num_heads)
+        self.attention = AFGSA(ch, block_size=block_size, halo_size=halo_size, num_heads=num_heads, curve_order=curve_order)
         self.feed_forward = nn.Sequential(
             conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu'),
             conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
@@ -259,7 +339,7 @@ class TransformerBlock(nn.Module):
 
 class AFGSANet(nn.Module):
     def __init__(self, in_ch, aux_in_ch, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2,
-                 padding_mode='reflect'):
+                 padding_mode='reflect', curve_order=CurveOrder.RASTER):
         super(AFGSANet, self).__init__()
         assert num_gcp <= num_sa
 
@@ -279,10 +359,10 @@ class AFGSANet(nn.Module):
         for i in range(1, num_sa+1):
             if i <= (num_sa - num_gcp):
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads, checkpoint=False, padding_mode=padding_mode))
+                                                           num_heads=num_heads, checkpoint=False, padding_mode=padding_mode, curve_order=curve_order))
             else:
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads, padding_mode=padding_mode))
+                                                           num_heads=num_heads, padding_mode=padding_mode, curve_order=curve_order))
         self.transformer_blocks = nn.Sequential(*transformer_blocks)
 
         self.decoder = nn.Sequential(
