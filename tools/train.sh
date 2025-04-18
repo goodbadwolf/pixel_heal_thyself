@@ -25,6 +25,7 @@ CLI_PATCH_SIZE=0
 LOG_FILE="run_log.txt"
 INTERACTIVE=false
 APP_MODE="afgsa"
+DETERMINISTIC=false
 
 cleanup() {
     echo "Process interrupted. Cleaning up..."
@@ -72,6 +73,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --repatch)
         REPATCH=true
+        shift
+        ;;
+    --deterministic)
+        DETERMINISTIC=true
         shift
         ;;
     *)
@@ -181,6 +186,10 @@ CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
   --numPatches ${NUM_PATCHES} \
   --patchSize ${PATCH_SIZE} \
   --appMode ${APP_MODE}"
+
+if [[ ${DETERMINISTIC} == true ]]; then
+    CMD+=" --deterministic"
+fi
 
 if [[ ${USE_PATCHES} == false ]]; then
     CMD+=" --useFullImage"

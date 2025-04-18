@@ -8,7 +8,7 @@ import multiprocessing
 
 
 class Hdf5Constructor:
-    def __init__(self, data_path, save_path, patch_size, num_patches, seed, train_val_ratio, noisy_spp=32, gt_spp=1024):
+    def __init__(self, data_path, save_path, patch_size, num_patches, seed, train_val_ratio, noisy_spp=32, gt_spp=1024, deterministic=False):
         assert sum(train_val_ratio) == 1, "Sum of train_val_ratio must be 1!"
         self.data_path = data_path
         self.save_path = save_path
@@ -18,6 +18,7 @@ class Hdf5Constructor:
         self.train_val_ratio = train_val_ratio
         self.noisy_spp = noisy_spp
         self.gt_spp = gt_spp
+        self.deterministic = deterministic
 
         self.exr_paths = []
         self.gt_paths = []
@@ -49,13 +50,17 @@ class Hdf5Constructor:
                         self.exr_paths.append(exr_path)
         assert len(self.exr_paths) == len(self.gt_paths), "#samples does not equal to #gts, check the data!"
 
+        if not self.deterministic:
+            assert type(self.seed) is int, "seed must be an int!"
+            random.seed(self.seed)
+
         self.paths = [(e, g) for e, g in zip(self.exr_paths, self.gt_paths)]
         random.shuffle(self.paths)
         print("\r\t-Get exr paths: done", end='')
 
 
     def worker(self, worker_id, queues, path_mapping, name_shape_mapping, lock, v):
-        rng = random.Random(self.seed + worker_id)
+        rng = random.Random(self.seed + worker_id) if self.deterministic else random.Random()
         while not queues[0].empty() or not queues[1].empty():
             v.value += 1
             print("\r\t-Generating patches: %d / %d" % (v.value, len(self.paths)-3), end='')
@@ -77,7 +82,7 @@ class Hdf5Constructor:
 
 
     def get_cropped_patches(self):
-        rng = random.Random(self.seed)
+        rng = random.Random(self.seed) if self.deterministic else random.Random()
         patch_count = 0
         train_save_path = os.path.join(self.save_path, "train.h5")
         val_save_path = os.path.join(self.save_path, "val.h5")

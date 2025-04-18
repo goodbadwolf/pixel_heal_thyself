@@ -239,13 +239,13 @@ class AFGSA(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True):
+    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True, padding_mode='reflect'):
         super(TransformerBlock, self).__init__()
         self.checkpoint = checkpoint
         self.attention = AFGSA(ch, block_size=block_size, halo_size=halo_size, num_heads=num_heads)
         self.feed_forward = nn.Sequential(
-            conv_block(ch, ch, kernel_size=3, padding=1, padding_mode='reflect', act_type='relu'),
-            conv_block(ch, ch, kernel_size=3, padding=1, padding_mode='reflect', act_type='relu')
+            conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu'),
+            conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
         )
 
     def forward(self, x):
@@ -258,18 +258,19 @@ class TransformerBlock(nn.Module):
 
 
 class AFGSANet(nn.Module):
-    def __init__(self, in_ch, aux_in_ch, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2):
+    def __init__(self, in_ch, aux_in_ch, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2,
+                 padding_mode='reflect'):
         super(AFGSANet, self).__init__()
         assert num_gcp <= num_sa
 
         self.conv1 = conv_block(in_ch, 256, kernel_size=1, act_type='relu')
-        self.conv3 = conv_block(in_ch, 256, kernel_size=3, padding=1, padding_mode='reflect', act_type='relu')
-        self.conv5 = conv_block(in_ch, 256, kernel_size=5, padding=2, padding_mode='reflect', act_type='relu')
+        self.conv3 = conv_block(in_ch, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
+        self.conv5 = conv_block(in_ch, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='relu')
         self.conv_map = conv_block(256*3, base_ch, kernel_size=1, act_type='relu')
 
         self.conv_a1 = conv_block(aux_in_ch, 256, kernel_size=1, act_type='relu')
-        self.conv_a3 = conv_block(aux_in_ch, 256, kernel_size=3, padding=1, padding_mode='reflect', act_type='leakyrelu')
-        self.conv_a5 = conv_block(aux_in_ch, 256, kernel_size=5, padding=2, padding_mode='reflect', act_type='leakyrelu')
+        self.conv_a3 = conv_block(aux_in_ch, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='leakyrelu')
+        self.conv_a5 = conv_block(aux_in_ch, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='leakyrelu')
         self.conv_aenc1 = conv_block(256*3, base_ch, kernel_size=1, act_type='leakyrelu')
         self.conv_aenc2 = conv_block(base_ch, base_ch, kernel_size=1, act_type='leakyrelu')
 
@@ -278,15 +279,15 @@ class AFGSANet(nn.Module):
         for i in range(1, num_sa+1):
             if i <= (num_sa - num_gcp):
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads, checkpoint=False))
+                                                           num_heads=num_heads, checkpoint=False, padding_mode=padding_mode))
             else:
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads))
+                                                           num_heads=num_heads, padding_mode=padding_mode))
         self.transformer_blocks = nn.Sequential(*transformer_blocks)
 
         self.decoder = nn.Sequential(
-            conv_block(base_ch, base_ch, kernel_size=3, padding=1, padding_mode='reflect', act_type='relu'),
-            conv_block(base_ch, base_ch, kernel_size=3, padding=1, padding_mode='reflect', act_type='relu'),
+            conv_block(base_ch, base_ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu'),
+            conv_block(base_ch, base_ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu'),
             conv_block(base_ch, 3, kernel_size=3, padding=1, padding_mode='zeros', act_type=None)
         )
 
