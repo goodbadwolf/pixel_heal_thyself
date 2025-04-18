@@ -31,6 +31,8 @@ USE_LPIPS_LOSS=false
 LIPPS_LOSS_W=0.0
 USE_SSIM_LOSS=false
 SSIM_LOSS_W=0.0
+USE_MULTISCALE_DISCRIMINATOR=false
+USE_FILM=false
 
 cleanup() {
     echo "Process interrupted. Cleaning up..."
@@ -104,6 +106,14 @@ while [[ $# -gt 0 ]]; do
     --ssim-loss=*)
         USE_SSIM_LOSS=true
         SSIM_LOSS_W="${1#*=}"
+        shift
+        ;;
+    --multiscale-discriminator)
+        USE_MULTISCALE_DISCRIMINATOR=true
+        shift
+        ;;
+    --use-film)
+        USE_FILM=true
         shift
         ;;
     *)
@@ -210,6 +220,8 @@ log "LPIPS loss    : ${USE_LPIPS_LOSS}"
 log "LPIPS loss W  : ${LIPPS_LOSS_W}"
 log "SSIM loss     : ${USE_SSIM_LOSS}"
 log "SSIM loss W   : ${SSIM_LOSS_W}"
+log "Multiscale D  : ${USE_MULTISCALE_DISCRIMINATOR}"
+log "Use FILM      : ${USE_FILM}"
 log "$SEPARATOR"
 
 CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
@@ -236,6 +248,15 @@ fi
 if [[ ${USE_SSIM_LOSS} == true ]]; then
     CMD+=" --useSSIMLoss"
     CMD+=" --ssimLossW ${SSIM_LOSS_W}"
+fi
+
+if [[ ${USE_MULTISCALE_DISCRIMINATOR} == true ]]; then
+    CMD+=" --useMultiscaleDiscriminator"
+    # CMD+=" --lrD 1e-4 --lrG 2e-5 --gpLossW 5 --batchSize 16"
+fi
+
+if [[ ${USE_FILM} == true ]]; then
+    CMD+=" --useFilm"
 fi
 
 if [[ ${USE_PATCHES} == false ]]; then

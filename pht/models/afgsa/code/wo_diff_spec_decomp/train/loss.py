@@ -4,7 +4,7 @@ import torch.nn as nn
 from torch import autograd
 import torchvision.models as models
 import numpy as np
-
+import torch.nn.functional as F
 
 Tensor = torch.cuda.FloatTensor
 

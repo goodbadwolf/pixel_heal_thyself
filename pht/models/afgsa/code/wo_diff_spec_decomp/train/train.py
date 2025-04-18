@@ -55,6 +55,7 @@ parser.add_argument("--lpipsLossW", type=float, default=0.1)
 parser.add_argument("--useSSIMLoss", dest="useSSIMLoss", action="store_true", default=False)
 parser.add_argument("--ssimLossW", type=float, default=0.1)
 parser.add_argument("--useMultiscaleDiscriminator", dest="useMultiscaleDiscriminator", action="store_true", default=False)
+parser.add_argument("--useFilm", dest="useFilm", action="store_true", default=False)
 # args, unknown = parser.parse_known_args()
 args = parser.parse_args()
 
@@ -71,17 +72,22 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
     padding_mode = 'replicate' if args.deterministic else 'reflect'
     print("\t\t-AFGSANet padding mode: %s" % padding_mode)
     print("\t\t-AFGSANet curve order: %s" % args.curveOrder)
+    print("\t\t-AFGSANet L1 lossW: %s" % args.l1LossW)
+    print("\t\t-AFGSANet GAN lossW: %s" % args.ganLossW)
+    print("\t\t-AFGSANet GP lossW: %s" % args.gpLossW)
     if args.useLPIPSLoss:
-        print("\t\t-AFGSANet LPIPS loss: %s" % args.lpipsLossW)
+        print("\t\t-AFGSANet LPIPS lossW: %s" % args.lpipsLossW)
     if args.useSSIMLoss:
-        print("\t\t-AFGSANet SSIM loss: %s" % args.ssimLossW)
+        print("\t\t-AFGSANet SSIM lossW: %s" % args.ssimLossW)
     if args.useMultiscaleDiscriminator:
         print("\t\t-AFGSANet multiscale discriminator")
+    if args.useFilm:
+        print("\t\t-AFGSANet use FiLM")
     G = AFGSANet(args.inCh, args.auxInCh, args.baseCh, num_sa=args.numSA, block_size=args.blockSize,
                  halo_size=args.haloSize, num_heads=args.numHeads, num_gcp=args.numGradientCheckpoint,
-                 padding_mode=padding_mode, curve_order=args.curveOrder).to(device)
+                 padding_mode=padding_mode, curve_order=args.curveOrder, use_film=args.useFilm).to(device)
     if args.useMultiscaleDiscriminator:
-        D = MultiScaleDiscriminator(in_nc=args.inCh).to(device)
+        D = MultiScaleDiscriminator(in_nc=args.inCh, patch_size=args.patchSize).to(device)
     else:
         D = DiscriminatorVGG(3, 64, args.patchSize).to(device)
     if args.loadModel:
@@ -155,7 +161,9 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             pred_g_fake = D(output)
             try:
                 if args.useMultiscaleDiscriminator:
-                    loss_g_fake = gan_loss(pred_g_fake, pred_d_real)
+                    with torch.no_grad():
+                        pred_d_real_ng = D(gt)
+                    loss_g_fake = gan_loss(pred_g_fake, pred_d_real_ng)
                 else:
                     loss_g_fake = gan_loss(pred_g_fake, True)
                 loss_l1 = l1_loss(output, gt)

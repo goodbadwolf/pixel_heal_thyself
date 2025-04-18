@@ -9,6 +9,8 @@ from torch.utils.checkpoint import checkpoint
 from einops import rearrange, repeat
 from hilbertcurve.hilbertcurve import HilbertCurve
 
+from film import FiLM
+
 
 def print_model_structure(model):
     blank = ' '
@@ -224,32 +226,8 @@ def make_curve_indices(block_size: int, mode: CurveOrder) -> torch.Tensor:
 
     return order.to(torch.long)
 
-def old_make_curve_indices(block_size: int, mode: CurveOrder) -> torch.Tensor:
-    """
-    Return a torch.Tensor of length block_size * block_size holding the Hilbert/Z‑order/raster
-    ordering for a square block of side block_size.
-    """
-    if mode == CurveOrder.RASTER:
-        print("Using raster order")
-        # 0,1,2,3 …
-        return torch.arange(block_size*block_size)
-    elif mode == CurveOrder.HILBERT:
-        print("Using hilbert order")
-        # block_size must be power‑of‑2
-        p = int(math.log2(block_size))
-        hilbert: HilbertCurve = HilbertCurve(p, 2)
-        coords = [hilbert.point_from_distance(
-            d) for d in range(block_size*block_size)]
-    elif mode == CurveOrder.ZORDER:
-        coords = [(d >> 1, d & 1)
-                  for d in range(block_size*block_size)]    # bit‑interleave
-    # Convert (x,y) pairs to linear indices and sort
-    order = sorted(range(block_size*block_size), key=lambda k: coords[k])
-    return torch.tensor(order, dtype=torch.long)
-
-
 class AFGSA(nn.Module):
-    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, bias=False, curve_order=CurveOrder.RASTER):
+    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, bias=False, curve_order=CurveOrder.RASTER, use_film=False):
         super(AFGSA, self).__init__()
         self.block_size = block_size
         self.halo_size = halo_size
@@ -265,7 +243,12 @@ class AFGSA(nn.Module):
         self.rel_h = nn.Parameter(torch.randn(1, block_size+2*halo_size, 1, self.head_ch//2), requires_grad=True)
         self.rel_w = nn.Parameter(torch.randn(1, 1, block_size+2*halo_size, self.head_ch//2), requires_grad=True)
 
-        self.conv_map = conv_block(ch*2, ch, kernel_size=1, act_type='relu')
+        self.use_film = use_film
+        if use_film:
+            self.alpha = nn.Parameter(torch.zeros(1))
+            self.film = FiLM(in_ch=ch, cond_ch=ch, hidden=128, use_spatial=True)
+        else:
+            self.conv_map = conv_block(ch*2, ch, kernel_size=1, act_type='relu')
         self.q_conv = nn.Conv2d(ch, ch, kernel_size=1, bias=bias)
         self.k_conv = nn.Conv2d(ch, ch, kernel_size=1, bias=bias)
         self.v_conv = nn.Conv2d(ch, ch, kernel_size=1, bias=bias)
@@ -273,7 +256,11 @@ class AFGSA(nn.Module):
         self.reset_parameters()
 
     def forward(self, noisy, aux):
-        n_aux = self.conv_map(torch.cat([noisy, aux], dim=1))
+        if self.use_film:
+            #n_aux = noisy + self.alpha * (self.film(noisy, aux) - noisy)
+            n_aux = self.film(noisy, aux)
+        else: 
+            n_aux = self.conv_map(torch.cat([noisy, aux], dim=1))
         b, c, h, w, block, halo, heads = *noisy.shape, self.block_size, self.halo_size, self.num_heads
         assert h % block == 0 and w % block == 0, 'feature map dimensions must be divisible by the block size'
 
@@ -319,10 +306,10 @@ class AFGSA(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True, padding_mode='reflect', curve_order=CurveOrder.RASTER):
+    def __init__(self, ch, block_size=8, halo_size=3, num_heads=4, checkpoint=True, padding_mode='reflect', curve_order=CurveOrder.RASTER, use_film=False):
         super(TransformerBlock, self).__init__()
         self.checkpoint = checkpoint
-        self.attention = AFGSA(ch, block_size=block_size, halo_size=halo_size, num_heads=num_heads, curve_order=curve_order)
+        self.attention = AFGSA(ch, block_size=block_size, halo_size=halo_size, num_heads=num_heads, curve_order=curve_order, use_film=use_film)
         self.feed_forward = nn.Sequential(
             conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu'),
             conv_block(ch, ch, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
@@ -339,7 +326,7 @@ class TransformerBlock(nn.Module):
 
 class AFGSANet(nn.Module):
     def __init__(self, in_ch, aux_in_ch, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2,
-                 padding_mode='reflect', curve_order=CurveOrder.RASTER):
+                 padding_mode='reflect', curve_order=CurveOrder.RASTER, use_film=False):
         super(AFGSANet, self).__init__()
         assert num_gcp <= num_sa
 
@@ -359,10 +346,10 @@ class AFGSANet(nn.Module):
         for i in range(1, num_sa+1):
             if i <= (num_sa - num_gcp):
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads, checkpoint=False, padding_mode=padding_mode, curve_order=curve_order))
+                                                           num_heads=num_heads, checkpoint=False, padding_mode=padding_mode, curve_order=curve_order, use_film=use_film))
             else:
                 transformer_blocks.append(TransformerBlock(base_ch, block_size=block_size, halo_size=halo_size,
-                                                           num_heads=num_heads, padding_mode=padding_mode, curve_order=curve_order))
+                                                           num_heads=num_heads, padding_mode=padding_mode, curve_order=curve_order, use_film=use_film))
         self.transformer_blocks = nn.Sequential(*transformer_blocks)
 
         self.decoder = nn.Sequential(

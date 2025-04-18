@@ -1,37 +1,48 @@
-# discriminator_ms.py
+import math
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.utils import spectral_norm as SN
 
 class PatchDiscriminator(nn.Module):
-    """N‑layer PatchGAN with Spectral Norm (64×64 receptive field)."""
-    def __init__(self, in_nc=3, base_nf=64, n_layers=4):
+    """
+    N‑layer 70×70‑style PatchGAN whose depth is chosen so the
+    last feature map is ≥ min_feat×min_feat (default 4×4),
+    **based on input_size passed from the caller**.
+    """
+    def __init__(self, in_nc: int, base_nf: int = 64,
+                 input_size: int = 128, min_feat: int = 4):
         super().__init__()
+
         kw = 4; pad = 1
-        layers = [SN(nn.Conv2d(in_nc, base_nf, kw, 2, pad)), nn.LeakyReLU(0.2, True)]
-        nf_mult = 1
-        for n in range(1, n_layers):
-            nf_mult_prev, nf_mult = nf_mult, min(2**n, 8)
-            layers += [
-                SN(nn.Conv2d(base_nf*nf_mult_prev, base_nf*nf_mult, kw, 2, pad)),
-                nn.LeakyReLU(0.2, True)
-            ]
-        layers += [SN(nn.Conv2d(base_nf*nf_mult, 1, kw, 1, pad))]
+        layers = []
+        nf_in, nf_out = in_nc, base_nf
+        cur_size = input_size
+
+        # keep striding until the next stride would go below min_feat
+        while cur_size // 2 >= min_feat:
+            layers += [SN(nn.Conv2d(nf_in, nf_out, kw, 2, pad)),
+                       nn.LeakyReLU(0.2, True)]
+            nf_in, nf_out = nf_out, min(nf_out * 2, base_nf * 8)
+            cur_size //= 2                    # track feature‑map side
+
+        # one last 1‑stride conv → 1‑channel patch logits
+        layers += [SN(nn.Conv2d(nf_in, 1, kw, 1, pad))]
         self.model = nn.Sequential(*layers)
 
-    def forward(self, x):              # output: N×1×h×w patch map
+    def forward(self, x):
         return self.model(x)
 
+
 class MultiScaleDiscriminator(nn.Module):
-    """Three PatchGANs operating at 1×, ½×, ¼× input scales."""
-    def __init__(self, in_nc=3):
+    def __init__(self, in_nc=3, patch_size=128):
         super().__init__()
-        self.D1 = PatchDiscriminator(in_nc)
-        self.D2 = PatchDiscriminator(in_nc)
-        self.D3 = PatchDiscriminator(in_nc)
+        self.D1 = PatchDiscriminator(in_nc, input_size=patch_size)          # 128×128
+        self.D2 = PatchDiscriminator(in_nc, input_size=patch_size // 2)     # 64×64
+        self.D3 = PatchDiscriminator(in_nc, input_size=patch_size // 4)     # 32×32
 
     def forward(self, x):
-        out1 = self.D1(x)
-        out2 = self.D2(F.avg_pool2d(x, 2))
-        out3 = self.D3(F.avg_pool2d(x, 4))
-        return [out1, out2, out3]      # list for RaGAN loss
+        return [
+            self.D1(x),
+            self.D2(nn.functional.avg_pool2d(x, 2)),
+            self.D3(nn.functional.avg_pool2d(x, 4))
+        ]
