@@ -4,7 +4,7 @@ import torch
 from hydra.utils import instantiate
 
 
-@hydra.main(config_path="../config", config_name="config")
+@hydra.main(version_base="1.1", config_path="../config", config_name="config")
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(cfg.seed)
 
