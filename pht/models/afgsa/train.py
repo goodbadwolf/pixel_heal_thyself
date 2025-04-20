@@ -280,15 +280,51 @@ def run(cfg: DictConfig):
     if cfg.trainer.get("deterministic", False):
         set_global_seed(cfg.seed)
 
-    # 2) build an args‐like object
     class A: pass
     args = A()
+    # I/O & seed
     args.inDir      = cfg.data.in_dir
     args.datasetDir = cfg.data.patches.root
     args.outDir     = cfg.paths.out_dir
-    args.epochs     = cfg.trainer.epochs
-    args.batchSize  = cfg.trainer.batch_size
-    # you can add more flags here (e.g. useLPIPSLoss, curveOrder…) from cfg
+    args.seed       = cfg.seed
+    # dataset parameters
+    args.patchSize  = cfg.data.patches.patch_size
+    args.numPatches = cfg.data.patches.num_patches
+    # training schedule
+    args.epochs         = cfg.trainer.epochs
+    args.batchSize      = cfg.trainer.batch_size
+    args.saveInterval   = cfg.trainer.save_interval
+    args.numSavedImgs   = cfg.trainer.num_saved_imgs
+    # optimizers / schedulers
+    args.lrG        = cfg.trainer.lrG
+    args.lrD        = cfg.trainer.lrD
+    args.lrGamma    = cfg.trainer.lr_gamma
+    args.lrMilestone= cfg.trainer.lr_milestone
+    # loss weights
+    args.l1LossW    = cfg.trainer.l1_loss_w
+    args.ganLossW   = cfg.trainer.gan_loss_w
+    args.gpLossW    = cfg.trainer.gp_loss_w
+    # miscellaneous
+    args.deterministic             = cfg.trainer.deterministic
+    args.numGradientCheckpoint     = cfg.trainer.num_gradient_checkpoint
+    args.useLPIPSLoss              = cfg.trainer.use_lpips_loss
+    args.lpipsLossW                = cfg.trainer.lpips_loss_w
+    args.useSSIMLoss               = cfg.trainer.use_ssim_loss
+    args.ssimLossW                 = cfg.trainer.ssim_loss_w
+    args.useMultiscaleDiscriminator= cfg.trainer.use_multiscale_discriminator
+    args.useFilm                   = cfg.trainer.use_film
+    # model hyperparameters
+    args.blockSize  = cfg.model.block_size
+    args.haloSize   = cfg.model.halo_size
+    args.numHeads   = cfg.model.num_heads
+    args.numSA      = cfg.model.num_sa
+    args.inCh       = cfg.model.in_ch
+    args.auxInCh    = cfg.model.aux_in_ch
+    args.baseCh     = cfg.model.base_ch
+    args.curveOrder = CurveOrder(cfg.trainer.curve_order)
+    # optional reload
+    args.loadModel  = cfg.trainer.get("load_model", False)
+    args.modelPath  = cfg.trainer.get("model_path", None)
 
     # 3) ensure output dirs exist
     create_folder(args.outDir)
