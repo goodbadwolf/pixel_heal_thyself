@@ -1,5 +1,6 @@
-dataset:
-  in_dir: ${paths.root}/data/images_full
-  patches:
-    root: ${paths.root}/data/patches
-    mode: full
+in_dir: ${paths.root}/data/images_full
+patches:
+  root: ${paths.root}/data/patches
+  mode: full
+  patch_size: 128
+  num_patches: 400
