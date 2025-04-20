@@ -1,13 +1,13 @@
 import torch.optim as optim
 from torch.optim import lr_scheduler
-from prefetch_dataloader import *
-from model import *
-from loss import *
-from gen_hdf5 import *
-from dataset import *
-from util import *
-from metric import *
-from discriminators import MultiScaleDiscriminator
+from pht.models.afgsa.prefetch_dataloader import *
+from pht.models.afgsa.model import *
+from pht.models.afgsa.loss import *
+from pht.models.afgsa.gen_hdf5 import *
+from pht.models.afgsa.dataset import *
+from pht.models.afgsa.util import *
+from pht.models.afgsa.metric import *
+from pht.models.afgsa.discriminators import MultiScaleDiscriminator
 import time
 import math
 import numpy as np

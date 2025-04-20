@@ -1,4 +1,4 @@
-from preprocessing import *
+from pht.models.afgsa.preprocessing import *
 import os
 import random
 import numpy as np
