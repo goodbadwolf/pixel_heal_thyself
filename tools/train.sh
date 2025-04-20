@@ -233,35 +233,24 @@ CMD="uv run pht/models/afgsa/code/wo_diff_spec_decomp/train/train.py \
   --patchSize ${PATCH_SIZE} \
   --curveOrder ${CURVE_ORDER}"
 
-if false; then
-    CMD+=" --appMode ${APP_MODE}"
-fi
+HYDRA_OPTS="\
+data.in_dir=${INPUT_DIR} \
+data.patches.root=${PATCHES_DIR} \
+data.patches.patch_size=${PATCH_SIZE} \
+data.patches.num_patches=${NUM_PATCHES} \
+trainer.epochs=${NUM_EPOCHS} \
+trainer.batch_size=\${BATCH_SIZE:-${NUM_PATCHES}} \
+trainer.curve_order=${CURVE_ORDER} \
+trainer.use_lpips_loss=${USE_LPIPS_LOSS} \
+trainer.lpips_loss_w=${LIPPS_LOSS_W} \
+trainer.use_ssim_loss=${USE_SSIM_LOSS} \
+trainer.ssim_loss_w=${SSIM_LOSS_W} \
+trainer.use_multiscale_discriminator=${USE_MULTISCALE_DISCRIMINATOR} \
+trainer.use_film=${USE_FILM} \
+trainer.deterministic=${DETERMINISTIC}"
 
-if [[ ${DETERMINISTIC} == true ]]; then
-    CMD+=" --deterministic"
-fi
+CMD="uv run python -m pht.train ${HYDRA_OPTS}"
 
-if [[ ${USE_LPIPS_LOSS} == true ]]; then
-    CMD+=" --useLPIPSLoss"
-    CMD+=" --lpipsLossW ${LIPPS_LOSS_W}"
-fi
-if [[ ${USE_SSIM_LOSS} == true ]]; then
-    CMD+=" --useSSIMLoss"
-    CMD+=" --ssimLossW ${SSIM_LOSS_W}"
-fi
-
-if [[ ${USE_MULTISCALE_DISCRIMINATOR} == true ]]; then
-    CMD+=" --useMultiscaleDiscriminator"
-    # CMD+=" --lrD 1e-4 --lrG 2e-5 --gpLossW 5 --batchSize 16"
-fi
-
-if [[ ${USE_FILM} == true ]]; then
-    CMD+=" --useFilm"
-fi
-
-if [[ ${USE_PATCHES} == false ]]; then
-    CMD+=" --useFullImage"
-fi
 if [[ ${APP_MODE} == "mamba" ]]; then
     CMD+=" --lrD 1e-5 --lrG 1e-4 --ganLossW 1e-4 --gpLossW 1"
 fi
