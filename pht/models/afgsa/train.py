@@ -11,56 +11,8 @@ from discriminators import MultiScaleDiscriminator
 import time
 import math
 import numpy as np
-import argparse
 import lpips
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--inDir", "-i", required=True)
-parser.add_argument("--datasetDir", "-d", required=True)
-parser.add_argument("--outDir", "-o", required=True)
-# training and dataset parameters
-parser.add_argument("--epochs", type=int, default=12)
-parser.add_argument("--batchSize", type=int, default=8)
-parser.add_argument("--numSavedImgs", type=int, default=6)
-parser.add_argument("--lrG", type=float, default=1e-4)
-parser.add_argument("--lrD", type=float, default=1e-4)
-parser.add_argument("--lrGamma", type=float, default=0.5)
-parser.add_argument("--lrMilestone", type=float, default=3)
-parser.add_argument("--seed", type=int, default=990819)
-parser.add_argument("--saveInterval", type=int, default=1)
-parser.add_argument("--GUpdateIters", type=int, default=1)
-parser.add_argument("--patchSize", type=int, default=128)
-parser.add_argument("--numPatches", type=int, default=400)
-parser.add_argument("--l1LossW", type=float, default=1.0)
-parser.add_argument("--ganLossW", type=float, default=5e-3)
-parser.add_argument("--gpLossW", type=float, default=10)
-
-parser.add_argument("--isLoad", dest="loadModel", action="store_true")
-parser.set_defaults(loadModel=False)
-parser.add_argument("--modelPath", type=str, default=None)
-# model parameters
-parser.add_argument("--blockSize", type=int, default=8)
-parser.add_argument("--haloSize", type=int, default=3)
-parser.add_argument("--numHeads", type=int, default=4)
-parser.add_argument("--numSA", type=int, default=5)
-parser.add_argument("--inCh", type=int, default=3)
-parser.add_argument("--auxInCh", type=int, default=7)
-parser.add_argument("--baseCh", type=int, default=256)
-parser.add_argument("--deterministic", dest="deterministic", action="store_true", default=False)
-parser.add_argument("--numGradientCheckpoint", type=int, default=0)  # how many Trans blocks with gradient checkpoint
-parser.add_argument("--curveOrder", type=CurveOrder, default=CurveOrder.RASTER, choices=[
-                    CurveOrder.RASTER, CurveOrder.HILBERT, CurveOrder.ZORDER], help="Token-flattening order inside the self-attention block")
-parser.add_argument("--useLPIPSLoss", dest="useLPIPSLoss", action="store_true", default=False)
-parser.add_argument("--lpipsLossW", type=float, default=0.1)
-parser.add_argument("--useSSIMLoss", dest="useSSIMLoss", action="store_true", default=False)
-parser.add_argument("--ssimLossW", type=float, default=0.1)
-parser.add_argument("--useMultiscaleDiscriminator", dest="useMultiscaleDiscriminator", action="store_true", default=False)
-parser.add_argument("--useFilm", dest="useFilm", action="store_true", default=False)
-# args, unknown = parser.parse_known_args()
-args = parser.parse_args()
-
-if args.deterministic:
-    set_global_seed(args.seed)
+from omegaconf import DictConfig
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]
@@ -323,9 +275,27 @@ def train(args, data_ratio):
     print("Finish training!")
 
 
-if __name__ == "__main__":
-    # create folders
+def run(cfg: DictConfig):
+    # 1) optional deterministic seeding
+    if cfg.trainer.get("deterministic", False):
+        set_global_seed(cfg.seed)
+
+    # 2) build an args‐like object
+    class A: pass
+    args = A()
+    args.inDir      = cfg.data.in_dir
+    args.datasetDir = cfg.data.patches.root
+    args.outDir     = cfg.paths.out_dir
+    args.epochs     = cfg.trainer.epochs
+    args.batchSize  = cfg.trainer.batch_size
+    # you can add more flags here (e.g. useLPIPSLoss, curveOrder…) from cfg
+
+    # 3) ensure output dirs exist
     create_folder(args.outDir)
     create_folder(args.datasetDir)
 
+    # 4) launch the original training
     train(args, data_ratio)
+
+# expose for Hydra entrypoint
+__all__ = ["run"]
