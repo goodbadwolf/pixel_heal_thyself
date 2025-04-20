@@ -1,5 +1,5 @@
 import os
-from preprocessing import *
+from pht.models.afgsa.preprocessing import *
 import matplotlib
 import matplotlib.pyplot as plt
 import pyexr

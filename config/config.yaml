@@ -14,5 +14,7 @@ paths:
 hydra:
   run:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  job:
+    chdir: false
   sweep:
     dir: multirun/${now:%Y-%m-%d}

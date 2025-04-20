@@ -9,7 +9,7 @@ from torch.utils.checkpoint import checkpoint
 from einops import rearrange, repeat
 from hilbertcurve.hilbertcurve import HilbertCurve
 
-from film import FiLM
+from pht.models.afgsa.film import FiLM
 
 
 def print_model_structure(model):
