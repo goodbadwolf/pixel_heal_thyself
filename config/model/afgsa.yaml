@@ -1,0 +1,9 @@
+_target_: pht.models.afgsa.model.AFGSANet
+in_ch: 3
+aux_in_ch: 7
+base_ch: 256
+num_sa: 5
+block_size: 8
+halo_size: 3
+num_heads: 4
+use_film: false

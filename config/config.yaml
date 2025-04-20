@@ -1,0 +1,16 @@
+defaults:
+  - model: afgsa
+  - trainer: default
+  - data: default
+
+seed: 990819
+
+paths:
+  root: ${hydra:runtime.cwd}
+  out_dir: ${hydra:run.dir}
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: multirun/${now:%Y-%m-%d}
