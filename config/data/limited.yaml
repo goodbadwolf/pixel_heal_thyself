@@ -1,0 +1,6 @@
+# images_limited, 200 patches of size 64
+in_dir: ${paths.root}/data/images_limited
+patches:
+  root: ${paths.root}/data/patches
+  patch_size: 64
+  num_patches: 200
