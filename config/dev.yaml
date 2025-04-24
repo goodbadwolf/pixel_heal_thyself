@@ -3,6 +3,7 @@ defaults:
   - _self_
 
 data:
+  resize: 0.5
   patches:
     patch_size: 32
     num_patches: 100

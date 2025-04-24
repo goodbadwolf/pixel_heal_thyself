@@ -16,60 +16,66 @@ from omegaconf import DictConfig
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]
-data_ratio = (0.95, 0.05)
 
 
-def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_num_samples, root_save_path):
+def train_SANet(cfg, train_dataloader, train_num_samples, val_dataloader, val_num_samples, root_save_path):
+    deterministic = cfg.trainer.get("deterministic", False)
     print("\t-Creating AFGSANet")
-    padding_mode = 'replicate' if args.deterministic else 'reflect'
+    padding_mode = 'replicate' if deterministic else 'reflect'
     print("\t\t-AFGSANet padding mode: %s" % padding_mode)
-    print("\t\t-AFGSANet curve order: %s" % args.curveOrder)
-    print("\t\t-AFGSANet L1 lossW: %s" % args.l1LossW)
-    print("\t\t-AFGSANet GAN lossW: %s" % args.ganLossW)
-    print("\t\t-AFGSANet GP lossW: %s" % args.gpLossW)
-    if args.useLPIPSLoss:
-        print("\t\t-AFGSANet LPIPS lossW: %s" % args.lpipsLossW)
-    if args.useSSIMLoss:
-        print("\t\t-AFGSANet SSIM lossW: %s" % args.ssimLossW)
-    if args.useMultiscaleDiscriminator:
+    print("\t\t-AFGSANet curve order: %s" % cfg.trainer.curve_order)
+    print("\t\t-AFGSANet L1 lossW: %s" % cfg.trainer.l1_loss_w)
+    print("\t\t-AFGSANet GAN lossW: %s" % cfg.trainer.gan_loss_w)
+    print("\t\t-AFGSANet GP lossW: %s" % cfg.trainer.gp_loss_w)
+    if cfg.trainer.use_lpips_loss:
+        print("\t\t-AFGSANet LPIPS lossW: %s" % cfg.trainer.lpips_loss_w)
+    if cfg.trainer.use_ssim_loss:
+        print("\t\t-AFGSANet SSIM lossW: %s" % cfg.trainer.ssim_loss_w)
+    if cfg.trainer.use_multiscale_discriminator:
         print("\t\t-AFGSANet multiscale discriminator")
-    if args.useFilm:
+    if cfg.trainer.use_film:
         print("\t\t-AFGSANet use FiLM")
-    G = AFGSANet(args.inCh, args.auxInCh, args.baseCh, num_sa=args.numSA, block_size=args.blockSize,
-                 halo_size=args.haloSize, num_heads=args.numHeads, num_gcp=args.numGradientCheckpoint,
-                 padding_mode=padding_mode, curve_order=args.curveOrder, use_film=args.useFilm).to(device)
-    if args.useMultiscaleDiscriminator:
-        D = MultiScaleDiscriminator(in_nc=args.inCh, patch_size=args.patchSize).to(device)
+    G = AFGSANet(cfg.model.in_ch, cfg.model.aux_in_ch, cfg.model.base_ch,
+                 num_sa=cfg.model.num_sa,
+                 block_size=cfg.model.block_size,
+                 halo_size=cfg.model.halo_size,
+                 num_heads=cfg.model.num_heads,
+                 num_gcp=cfg.trainer.num_gradient_checkpoint,
+                 padding_mode=padding_mode,
+                 curve_order=cfg.trainer.curve_order,
+                 use_film=cfg.trainer.use_film).to(device)
+    if cfg.trainer.use_multiscale_discriminator:
+        D = MultiScaleDiscriminator(in_nc=cfg.model.in_ch, patch_size=cfg.data.patches.patch_size).to(device)
     else:
-        D = DiscriminatorVGG(3, 64, args.patchSize).to(device)
-    if args.loadModel:
-        G.load_state_dict(torch.load(os.path.join(args.modelPath, 'G.pt')))
-        D.load_state_dict(torch.load(os.path.join(args.modelPath, 'D.pt')))
+        D = DiscriminatorVGG(3, 64, cfg.data.patches.patch_size).to(device)
+    if cfg.trainer.get("load_model", False):
+        G.load_state_dict(torch.load(os.path.join(cfg.trainer.get("model_path", None), 'G.pt')))
+        D.load_state_dict(torch.load(os.path.join(cfg.trainer.get("model_path", None), 'D.pt')))
     print_model_structure(G)
     print_model_structure(D)
 
     l1_loss = L1ReconstructionLoss().to(device)
-    if args.useMultiscaleDiscriminator:
+    if cfg.trainer.use_multiscale_discriminator:
         gan_loss = RaHingeGANLoss().to(device)
     else:
         gan_loss = GANLoss('wgan').to(device)
     gp_loss = GradientPenaltyLoss(device).to(device)
-    lpips_loss = lpips.LPIPS(net='vgg').to(device) if args.useLPIPSLoss else None
-    ssim_loss = SSIMLoss(window_size=11).to(device) if args.useSSIMLoss else None
+    lpips_loss = lpips.LPIPS(net='vgg').to(device) if cfg.trainer.use_lpips_loss else None
+    ssim_loss = SSIMLoss(window_size=11).to(device) if cfg.trainer.use_ssim_loss else None
 
-    milestones = [i * args.lrMilestone - 1 for i in range(1, args.epochs//args.lrMilestone)]
-    optimizer_generator = optim.Adam(G.parameters(), lr=args.lrG, betas=(0.9, 0.999), eps=1e-8)
+    milestones = [i * cfg.trainer.lr_milestone - 1 for i in range(1, cfg.trainer.epochs // cfg.trainer.lr_milestone)]
+    optimizer_generator = optim.Adam(G.parameters(), lr=cfg.trainer.lrG, betas=(0.9, 0.999), eps=1e-8)
     scheduler_generator = lr_scheduler.MultiStepLR(optimizer_generator, milestones=milestones, gamma=0.5)
-    optimizer_discriminator = optim.Adam(D.parameters(), lr=args.lrD, betas=(0.9, 0.999), eps=1e-8)
+    optimizer_discriminator = optim.Adam(D.parameters(), lr=cfg.trainer.lrD, betas=(0.9, 0.999), eps=1e-8)
     scheduler_discriminator = lr_scheduler.MultiStepLR(optimizer_discriminator, milestones=milestones, gamma=0.5)
 
     accumulated_generator_loss = 0
     accumulated_discriminator_loss = 0
-    total_iteraions = math.ceil(train_num_samples / args.batchSize)
-    save_img_interval = val_num_samples // args.numSavedImgs
+    total_iteraions = math.ceil(train_num_samples / cfg.trainer.batch_size)
+    save_img_interval = val_num_samples // cfg.trainer.num_saved_imgs
 
     print("\t-Start training")
-    for epoch in range(args.epochs):
+    for epoch in range(cfg.trainer.epochs):
         start = time.time()
         for i_batch, batch_sample in enumerate(train_dataloader):
             aux_features = batch_sample['aux']
@@ -94,7 +100,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
             optimizer_discriminator.zero_grad()
             pred_d_fake = D(output.detach())
             pred_d_real = D(gt)
-            if args.useMultiscaleDiscriminator:
+            if cfg.trainer.use_multiscale_discriminator:
                 discriminator_loss = gan_loss(pred_d_real, pred_d_fake)
             else:
                 try:
@@ -103,16 +109,16 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
                     loss_gp = gp_loss(D, gt, output.detach())
                 except:
                     break
-                discriminator_loss = (loss_d_fake + loss_d_real) / 2 + args.gpLossW * loss_gp
+                discriminator_loss = (loss_d_fake + loss_d_real) / 2 + cfg.trainer.gp_loss_w * loss_gp
             discriminator_loss.backward()
             optimizer_discriminator.step()
-            accumulated_discriminator_loss += discriminator_loss.item() / args.batchSize
+            accumulated_discriminator_loss += discriminator_loss.item() / cfg.trainer.batch_size
 
             # train generator
             optimizer_generator.zero_grad()
             pred_g_fake = D(output)
             try:
-                if args.useMultiscaleDiscriminator:
+                if cfg.trainer.use_multiscale_discriminator:
                     with torch.no_grad():
                         pred_d_real_ng = D(gt)
                     loss_g_fake = gan_loss(pred_g_fake, pred_d_real_ng)
@@ -121,16 +127,15 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
                 loss_l1 = l1_loss(output, gt)
             except:
                 break
-            generator_loss = args.ganLossW * loss_g_fake + args.l1LossW * loss_l1
+            generator_loss = cfg.trainer.gan_loss_w * loss_g_fake + cfg.trainer.l1_loss_w * loss_l1
 
             def assert_nchw(x, name):
                 assert x.ndim == 4 and x.shape[1] == 3, f"{name} not NCHW/3‑ch"
 
-            # before loss calls
             assert_nchw(output, 'output')
             assert_nchw(gt, 'gt')
 
-            if args.useLPIPSLoss:
+            if cfg.trainer.use_lpips_loss:
                 def to_lpips_range(x_log):
                     x_lin = torch.exp(x_log) - 1.0
                     x_rgb = (x_lin / (x_lin.max() + 1e-6)).clamp(0, 1)
@@ -138,13 +143,13 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
                 lpips_output = to_lpips_range(output)
                 lpips_gt = to_lpips_range(gt)
                 loss_lpips = lpips_loss(lpips_output, lpips_gt).mean()
-                generator_loss += args.lpipsLossW * loss_lpips
-            if args.useSSIMLoss:
+                generator_loss += cfg.trainer.lpips_loss_w * loss_lpips
+            if cfg.trainer.use_ssim_loss:
                 loss_ssim = ssim_loss(output, gt)
-                generator_loss += args.ssimLossW * loss_ssim
+                generator_loss += cfg.trainer.ssim_loss_w * loss_ssim
             generator_loss.backward()
             optimizer_generator.step()
-            accumulated_generator_loss += generator_loss.item() / args.batchSize
+            accumulated_generator_loss += generator_loss.item() / cfg.trainer.batch_size
 
             if i_batch == 0:
                 iter_took = time.time() - start
@@ -170,7 +175,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
         accumulated_discriminator_loss = 0
 
         # validate and save model, example images
-        if epoch % args.saveInterval == 0:
+        if epoch % cfg.trainer.save_interval == 0:
             current_save_path = create_folder(os.path.join(root_save_path, 'model_epoch%d' % (epoch + 1)))
             avg_psnr = 0.0
             avg_ssim = 0.0
@@ -229,110 +234,79 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
                             (epoch + 1, avg_mrse, avg_psnr, 1-avg_ssim))
 
 
-def train(args, data_ratio):
-    train_save_path = os.path.join(args.datasetDir, "train.h5")
-    val_save_path = os.path.join(args.datasetDir, "val.h5")
-    print(f"Loading dataset: patches from {args.datasetDir}")
+def train(cfg: DictConfig):
+    train_save_path = os.path.join(cfg.data.patches.root, "train.h5")
+    val_save_path = os.path.join(cfg.data.patches.root, "val.h5")
+    print(f"Loading dataset: patches from {cfg.data.patches.root}")
     exist = True
     for path in [train_save_path, val_save_path]:
         if not os.path.exists(path):
             exist = False
     if not exist:
-        constructor = Hdf5Constructor(args.inDir, args.datasetDir, args.patchSize, args.numPatches, args.seed,
-                                      data_ratio)
+        constructor = Hdf5Constructor(cfg.data.in_dir, cfg.data.patches.root,
+                                      cfg.data.patches.patch_size,
+                                      cfg.data.patches.num_patches,
+                                      cfg.seed,
+                                      cfg.data_ratio, resize=cfg.data.resize)
         constructor.construct_hdf5()
 
-    if not args.deterministic:
-        torch.manual_seed(args.seed)
-        torch.cuda.manual_seed_all(args.seed)
+    if cfg.trainer.get("deterministic", False):
+        torch.manual_seed(cfg.seed)
+        torch.cuda.manual_seed_all(cfg.seed)
         torch.backends.cudnn.deterministic = False
 
     train_dataset = Dataset(train_save_path)
     train_num_samples = len(train_dataset)
-    # train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=shuffle, num_workers=7,
-    #                               pin_memory=True)  # original
-    if args.deterministic:
+    if cfg.trainer.get("deterministic", False):
         g = torch.Generator()
-        g.manual_seed(args.seed)
-        train_dataloader = DataLoaderX(train_dataset, batch_size=args.batchSize, shuffle=True, generator=g, num_workers=7,
-                                       pin_memory=True, worker_init_fn=lambda wid: set_global_seed(args.seed + wid))  # prefetch
+        g.manual_seed(cfg.seed)
+        train_dataloader = DataLoaderX(train_dataset,
+                                       batch_size=cfg.trainer.batch_size,
+                                       shuffle=True,
+                                       generator=g,
+                                       num_workers=7,
+                                       pin_memory=True,
+                                       worker_init_fn=lambda wid: set_global_seed(cfg.seed + wid))
     else:
-        train_dataloader = DataLoaderX(train_dataset, batch_size=args.batchSize, shuffle=True, num_workers=7,
-                                       pin_memory=True)  # prefetch
+        train_dataloader = DataLoaderX(train_dataset,
+                                       batch_size=cfg.trainer.batch_size,
+                                       shuffle=True,
+                                       num_workers=7,
+                                       pin_memory=True)
 
     val_dataset = Dataset(val_save_path)
     val_num_samples = len(val_dataset)
-    if args.deterministic:
+    if cfg.trainer.get("deterministic", False):
         g = torch.Generator()
-        g.manual_seed(args.seed)
-        val_dataloader = DataLoaderX(val_dataset, batch_size=1, shuffle=False, generator=g, num_workers=7, pin_memory=True)
+        g.manual_seed(cfg.seed)
+        val_dataloader = DataLoaderX(val_dataset,
+                                     batch_size=1,
+                                     shuffle=False,
+                                     generator=g,
+                                     num_workers=7,
+                                     pin_memory=True)
     else:
-        val_dataloader = DataLoaderX(val_dataset, batch_size=1, shuffle=False, num_workers=7, pin_memory=True)
+        val_dataloader = DataLoaderX(val_dataset,
+                                     batch_size=1,
+                                     shuffle=False,
+                                     num_workers=7,
+                                     pin_memory=True)
 
-    # root_save_path = create_folder(os.path.join(args.outDir, 'AFGSA'), still_create=True)  # path to save model, imgs
-    root_save_path = create_folder(args.outDir, still_create=False)  # path to save model, imgs
-
-    train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_num_samples, root_save_path)
+    root_save_path = create_folder(cfg.paths.out_dir, still_create=False)
+    train_SANet(cfg, train_dataloader, train_num_samples,
+                val_dataloader, val_num_samples, root_save_path)
     print("Finish training!")
 
 
 def run(cfg: DictConfig):
-    # 1) optional deterministic seeding
+    cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
+
     if cfg.trainer.get("deterministic", False):
         set_global_seed(cfg.seed)
 
-    class A: pass
-    args = A()
-    # I/O & seed
-    args.inDir      = cfg.data.in_dir
-    args.datasetDir = cfg.data.patches.root
-    args.outDir     = cfg.paths.out_dir
-    args.seed       = cfg.seed
-    # dataset parameters
-    args.patchSize  = cfg.data.patches.patch_size
-    args.numPatches = cfg.data.patches.num_patches
-    # training schedule
-    args.epochs         = cfg.trainer.epochs
-    args.batchSize      = cfg.trainer.batch_size
-    args.saveInterval   = cfg.trainer.save_interval
-    args.numSavedImgs   = cfg.trainer.num_saved_imgs
-    # optimizers / schedulers
-    args.lrG        = cfg.trainer.lrG
-    args.lrD        = cfg.trainer.lrD
-    args.lrGamma    = cfg.trainer.lr_gamma
-    args.lrMilestone= cfg.trainer.lr_milestone
-    # loss weights
-    args.l1LossW    = cfg.trainer.l1_loss_w
-    args.ganLossW   = cfg.trainer.gan_loss_w
-    args.gpLossW    = cfg.trainer.gp_loss_w
-    # miscellaneous
-    args.deterministic             = cfg.trainer.deterministic
-    args.numGradientCheckpoint     = cfg.trainer.num_gradient_checkpoint
-    args.useLPIPSLoss              = cfg.trainer.use_lpips_loss
-    args.lpipsLossW                = cfg.trainer.lpips_loss_w
-    args.useSSIMLoss               = cfg.trainer.use_ssim_loss
-    args.ssimLossW                 = cfg.trainer.ssim_loss_w
-    args.useMultiscaleDiscriminator= cfg.trainer.use_multiscale_discriminator
-    args.useFilm                   = cfg.trainer.use_film
-    # model hyperparameters
-    args.blockSize  = cfg.model.block_size
-    args.haloSize   = cfg.model.halo_size
-    args.numHeads   = cfg.model.num_heads
-    args.numSA      = cfg.model.num_sa
-    args.inCh       = cfg.model.in_ch
-    args.auxInCh    = cfg.model.aux_in_ch
-    args.baseCh     = cfg.model.base_ch
-    args.curveOrder = CurveOrder(cfg.trainer.curve_order)
-    # optional reload
-    args.loadModel  = cfg.trainer.get("load_model", False)
-    args.modelPath  = cfg.trainer.get("model_path", None)
-
-    # 3) ensure output dirs exist
-    create_folder(args.outDir)
-    create_folder(args.datasetDir)
-
-    # 4) launch the original training
-    train(args, data_ratio)
+    create_folder(cfg.paths.out_dir)
+    create_folder(cfg.data.patches.root)
+    train(cfg)
 
 # expose for Hydra entrypoint
 __all__ = ["run"]

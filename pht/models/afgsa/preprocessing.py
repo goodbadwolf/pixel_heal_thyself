@@ -41,7 +41,21 @@ def postprocess_specular(specular):
     return np.exp(specular) - 1
 
 
-def preprocess_data(exr_path, gt_path):
+def resize_exr_channels(exr_data, scale=0.5):
+    scaled_exr_data = {}
+    for channel_name, channel_data in exr_data.items():
+        H, W, C = channel_data.shape
+        block = int(1 / scale)
+        assert H % block == 0 and W % block == 0, (
+            f"Image dims ({H}×{W}) must be divisible by 2"
+        )
+        new_H, new_W = H // block, W // block
+        scaled_channel_data = channel_data.reshape(new_H, block, new_W, block, C).mean(axis=(1, 3))
+        scaled_exr_data[channel_name] = scaled_channel_data
+
+    return scaled_exr_data
+
+def preprocess_data(exr_path, gt_path, resize=1.0):
     data = {}
 
     # high spp
@@ -58,6 +72,9 @@ def preprocess_data(exr_path, gt_path):
         d_name = d_names[i]
         name = names[i]
         data[d_name] = d[name]
+
+    if resize != 1.0:
+        data = resize_exr_channels(data, scale=resize)
 
     # nan to 0.0, inf to finite number
     for channel_name, channel_value in data.items():
@@ -242,8 +259,8 @@ def crop(data, position, patch_size):
     return temp
 
 
-def get_cropped_patches(exr_path, gt_path, patch_size, num_patches, rng:Random):
-    data = preprocess_data(exr_path, gt_path)
+def get_cropped_patches(exr_path, gt_path, patch_size, num_patches, rng:Random, resize=1.0):
+    data = preprocess_data(exr_path, gt_path, resize=resize)
     patches = importance_sampling(data, patch_size, num_patches, rng)
     cropped = list(crop(data, tuple(position), patch_size) for position in patches)
     return cropped, patches

@@ -1,5 +1,6 @@
 in_dir: ${paths.root}/data/images
+resize: 1.0
 patches:
   patch_size: 128
   num_patches: 400
-  root: ${data.in_dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}
+  root: ${data.in_dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.resize}
