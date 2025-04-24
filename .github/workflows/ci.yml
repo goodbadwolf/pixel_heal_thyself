@@ -26,6 +26,5 @@ jobs:
       - name: Run smoke test
         run: |
           uv run python -m pht.train \
-            data=small \
-            trainer.epochs=1 \
-            trainer.batch_size=1
+            data=ci \
+            trainer=ci
