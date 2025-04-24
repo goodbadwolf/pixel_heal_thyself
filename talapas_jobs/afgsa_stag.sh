@@ -1,0 +1,15 @@
+#!/bin/bash
+#SBATCH --account=cdux
+#SBATCH --job-name=afgsa_stag
+#SBATCH --output=/gpfs/projects/cdux/mmathai/pixel_heal_thyself/runs/afgsa_stag_out.txt
+#SBATCH --error=/gpfs/projects/cdux/mmathai/pixel_heal_thyself/runs/afgsa_stag_err.txt
+#SBATCH --partition=gpu
+#SBATCH --time=02:00:00
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=32
+#SBATCH --gpus=1
+
+cd /gpfs/projects/cdux/mmathai/pixel_heal_thyself
+source .venv/bin/activate
+uv run python -m pht.train -cn stag data.resize=0.5
