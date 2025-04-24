@@ -12,29 +12,33 @@ uv install
 
 ## Training
 
+### Available Configurations
+
 PHT uses Hydra for configuration management. From the root of the repository, run:
 
 ```bash
-uv run python -m pht.train [overrides]
+uv run python -m pht.train -cn <config name> [overrides]
 ```
 
-### Examples
+where `<config name>` is the name of the configuration file in `config/` (without the `.yaml` extension).
 
-- Full dataset, default settings:
+The available configuration names are:
+
+- `ci`: To be used for continuous integration testing
+- `dev`: Trains on patches of size 32x32, 100 patches per image. To be used for development and debugging.
+- `stag`: Trains on patches of size 64x64, 200 patches per image. To be used for staging and testing.
+- `prod`: Trains on patches of size 128x128, 400 patches per image. To be used for actual training and experimentation.
+
+### Overrides
+
+You can override any configuration parameter by appending it to the command.
+
+For example, to set the number of epochs to 8, you can run:
 
 ```bash
-uv run python -m pht.train
+uv run python -m pht.train -cn dev trainer.epochs=8
 ```
 
-- Small dataset preset, 8 epochs:
+## Datasets
 
-```bash
-uv run python -m pht.train dataset=small trainer.epochs=8
-```
-
-## Configuration
-
-- `config/config.yaml`: Global defaults
-- `config/model/`: Model parameters (e.g. `afgsa.yaml`)
-- `config/data/`: Dataset presets (`default`, `small`, `limited`)
-- `config/trainer/`: Training parameters (batch size, epochs, etc.)
+**TBD**
