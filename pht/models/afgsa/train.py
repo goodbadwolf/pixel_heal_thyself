@@ -158,12 +158,13 @@ def train_SANet(cfg, train_dataloader, train_num_samples, val_dataloader, val_nu
             end = time.time()
             print("\r\t-Epoch: %d \tTook: %f sec \tIteration: %d/%d \tIter Took: %f sec \tI/O Took: %f sec \tG Loss: %f \tD Loss: %f" %
                   (epoch + 1, end - start, i_batch + 1, total_iteraions, iter_took, io_took,
-                   accumulated_generator_loss/(i_batch+1), accumulated_discriminator_loss/(i_batch+1)), end='')
+                   accumulated_generator_loss/(i_batch+1), accumulated_discriminator_loss/(i_batch+1)), end='',
+                   flush=True)
 
         end = time.time()
         print("\r\t-Epoch: %d \tG loss: %f \tD Loss: %f \tTook: %d seconds" %
               (epoch + 1, accumulated_generator_loss/(i_batch+1), accumulated_discriminator_loss/(i_batch+1),
-               end - start))
+               end - start), flush=True)
         # save loss values
         with open(os.path.join(root_save_path, "train_loss.txt"), 'a') as f:
             f.write("Epoch: %d \tG loss: %f \tD Loss: %f\n" % (epoch + 1, accumulated_generator_loss/(i_batch+1),
@@ -220,14 +221,14 @@ def train_SANet(cfg, train_dataloader, train_num_samples, val_dataloader, val_nu
 
                     end = time.time()
                     print("\r\t-Validation: %d \tTook: %f seconds \tIteration: %d/%d" %
-                          (epoch + 1, end - start, i_batch + 1, val_num_samples), end='')
+                          (epoch + 1, end - start, i_batch + 1, val_num_samples), end='', flush=True)
                 G.train()
 
                 avg_mrse /= val_num_samples
                 avg_psnr /= val_num_samples
                 avg_ssim /= val_num_samples
                 print("\r\t-Validation: %d \tTook: %d seconds \tAvg MRSE: %f \tAvg PSNR: %f \tAvg 1-SSIM: %f" %
-                      (epoch + 1, end - start, avg_mrse, avg_psnr, 1-avg_ssim))
+                      (epoch + 1, end - start, avg_mrse, avg_psnr, 1-avg_ssim), flush=True)
                 # save evaluation results
                 with open(os.path.join(root_save_path, "evaluation.txt"), 'a') as f:
                     f.write("Validation: %d \tAvg MRSE: %f \tAvg PSNR: %f \tAvg 1-SSIM: %f\n" %
