@@ -135,6 +135,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+!config/env/
 
 # Spyder project settings
 .spyderproject
@@ -173,4 +174,10 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# Datasets that are not to be tracked using git
+data/
+# Exception is to track the images needed for Github Actions
+!data/images_ci
+
+# Logs and other artefacts when running PHT
 runs/

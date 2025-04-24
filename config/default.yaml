@@ -1,9 +1,8 @@
-version_base: 1.1
 defaults:
   - _self_
   - model: afgsa
-  - trainer: default
   - data: default
+  - trainer: default
 
 seed: 990819
 

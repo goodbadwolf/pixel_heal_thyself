@@ -232,6 +232,7 @@ def train_SANet(args, train_dataloader, train_num_samples, val_dataloader, val_n
 def train(args, data_ratio):
     train_save_path = os.path.join(args.datasetDir, "train.h5")
     val_save_path = os.path.join(args.datasetDir, "val.h5")
+    print(f"Loading dataset: patches from {args.datasetDir}")
     exist = True
     for path in [train_save_path, val_save_path]:
         if not os.path.exists(path):

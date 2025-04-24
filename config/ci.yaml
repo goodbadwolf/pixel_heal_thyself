@@ -1,0 +1,13 @@
+defaults:
+  - default
+  - _self_
+
+data:
+  in_dir: ${paths.root}/data/images_ci
+  patches:
+    patch_size: 32
+    num_patches: 100
+
+trainer:
+  batch_size: 2
+  epochs: 2
