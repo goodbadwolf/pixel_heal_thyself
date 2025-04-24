@@ -1,5 +1,0 @@
-in_dir: ${paths.root}/data/images_small
-patches:
-  root: ${paths.root}/data/patches
-  patch_size: 32
-  num_patches: 100
