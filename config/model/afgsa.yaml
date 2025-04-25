@@ -1,4 +1,4 @@
-_target_: pht.models.afgsa.model.AFGSANet
+name: afgsa
 in_ch: 3
 aux_in_ch: 7
 base_ch: 256
