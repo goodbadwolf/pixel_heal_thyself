@@ -339,6 +339,177 @@ def create_summary_plot(df, colors, markers):
     return fig
 
 
+def generate_metrics_summary(
+    df, plot_filters, output_file, tail_epochs=5, best_performer=False, verbose=False
+):
+    with open(output_file, "w") as f:
+        f.write("# Metrics Summary Report\n")
+        f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+        f.write("## Config\n")
+        f.write("=" * 80 + "\n\n")
+        f.write(f"tail_epochs: {tail_epochs}\n")
+        f.write(f"best_performer: {best_performer}\n\n")
+
+        for filter_name, configurations in plot_filters.items():
+            f.write(f"\n## Filter: {filter_name}\n")
+            f.write("=" * 80 + "\n\n")
+
+            # Filter data to only include these configurations
+            filtered_df = df[df["overrides"].isin(configurations)]
+
+            # Get the metrics we're working with
+            metric_types = ["mrses", "psnrs", "ssims"]
+            metric_full_names = {
+                "mrses": "MRSE",
+                "psnrs": "PSNR",
+                "ssims": "SSIM",
+            }
+
+            # For each metric type
+            for metric_type in metric_types:
+                f.write(f"\n### {metric_full_names[metric_type]}\n")
+                f.write("-" * 80 + "\n\n")
+
+                metric_df = filtered_df[filtered_df["metric_type"] == metric_type]
+
+                # Get the last `tail_epochs` epochs for each configuration
+                all_epochs = sorted(metric_df["epoch"].unique())
+                if len(all_epochs) > tail_epochs:
+                    last_epochs = all_epochs[-tail_epochs:]
+                else:
+                    last_epochs = all_epochs
+
+                # Only keep data for the last epochs
+                last_epochs_df = metric_df[metric_df["epoch"].isin(last_epochs)]
+
+                # Calculate the average of the last `tail_epochs` epochs for each configuration
+                avg_results = {}
+
+                for config in configurations:
+                    config_data = last_epochs_df[last_epochs_df["overrides"] == config]
+                    if not config_data.empty:
+                        avg_value = config_data["avg"].mean()
+                        avg_results[config] = avg_value
+
+                # Create a baseline for comparison (the first configuration in the list)
+                baseline_config = configurations[0]
+
+                if baseline_config in avg_results:
+                    baseline_value = avg_results[baseline_config]
+
+                    if verbose:
+                        f.write(
+                            f"Average metrics over last {len(last_epochs)} epochs ({', '.join(map(str, last_epochs))})\n\n"
+                        )
+
+                    # Table header
+                    f.write(
+                        f"{'Configuration':<30} | {'Avg Value':<10} | {'Abs Diff':<10} | {'% Diff':<10} | {'% Trend':<5}\n"
+                    )
+                    f.write("-" * 80 + "\n")
+
+                    # List results for each configuration
+                    for config in configurations:
+                        if config in avg_results:
+                            config_value = avg_results[config]
+                            abs_diff = config_value - baseline_value
+
+                            # For PSNR and SSIM, higher is better; for MRSE, lower is better
+                            if metric_type == "mrses":
+                                pct_diff = (
+                                    (baseline_value - config_value)
+                                    / baseline_value
+                                    * 100
+                                )
+                                better = (
+                                    "↓"
+                                    if abs_diff < 0
+                                    else ("=" if abs_diff == 0 else "↑")
+                                )
+                            else:
+                                pct_diff = (
+                                    (config_value - baseline_value)
+                                    / baseline_value
+                                    * 100
+                                )
+                                better = (
+                                    "↑"
+                                    if abs_diff > 0
+                                    else ("=" if abs_diff == 0 else "↓")
+                                )
+
+                            # Format the values with appropriate precision
+                            if metric_type == "mrses":
+                                value_str = f"{config_value:.6f}"
+                                abs_diff_str = f"{abs_diff:.6f}"
+                            else:
+                                value_str = f"{config_value:.3f}"
+                                abs_diff_str = f"{abs_diff:.3f}"
+
+                            # Skip baseline comparison with itself (diff would be 0)
+                            if config == baseline_config:
+                                pct_diff_str = "baseline"
+                            else:
+                                pct_diff_str = f"{pct_diff:.2f}"
+
+                            f.write(
+                                f"{config:<30} | {value_str:<10} | {abs_diff_str:<10} | {pct_diff_str:<10} | {better:<5}\n"
+                            )
+                        else:
+                            f.write(
+                                f"{config:<30} | {'No data':<10} | {'N/A':<10} | {'N/A':<10}\n"
+                            )
+
+                # f.write(f"Comparing to baseline configuration: {baseline_config}\n")
+                # f.write(
+                #     "Last {len(last_epochs)} epochs analyzed: {', '.join(map(str, last_epochs))}\n\n"
+                # )
+
+                if best_performer:
+                    # Add some statistics about which configuration performed best
+                    f.write("\nBest performing configurations:\n")
+
+                    best_configs = {}
+                    for epoch in last_epochs:
+                        epoch_data = last_epochs_df[last_epochs_df["epoch"] == epoch]
+
+                        if not epoch_data.empty:
+                            if metric_type == "mrses":
+                                # For MRSE, lower is better
+                                best_idx = epoch_data["avg"].idxmin()
+                            else:
+                                # For PSNR and SSIM, higher is better
+                                best_idx = epoch_data["avg"].idxmax()
+
+                            best_config = epoch_data.loc[best_idx]["overrides"]
+                            best_value = epoch_data.loc[best_idx]["avg"]
+
+                            if best_config not in best_configs:
+                                best_configs[best_config] = 0
+                            best_configs[best_config] += 1
+
+                            if metric_type == "mrses":
+                                f.write(
+                                    f"Epoch {epoch}: {best_config} (MRSE: {best_value:.6f})\n"
+                                )
+                            else:
+                                f.write(
+                                    f"Epoch {epoch}: {best_config} ({metric_type[:-1].upper()}: {best_value:.3f})\n"
+                                )
+
+                    # Summary of which configuration was best most often
+                    f.write("\nConfiguration frequency as best performer:\n")
+                    for config, count in sorted(
+                        best_configs.items(), key=lambda x: x[1], reverse=True
+                    ):
+                        f.write(f"{config}: {count}/{len(last_epochs)} epochs\n")
+
+                    f.write("\n")  # Extra line for readability
+
+            f.write("\n\n")  # Extra line between filter sections
+
+
 overrides_to_names_map = {
     "- data.resize=0.5||- trainer.curve_order=raster||- trainer.epochs=20": "baseline",
     "- data.resize=0.5||- trainer.curve_order=hilbert||- trainer.epochs=20": "baseline+hilbert",
@@ -491,6 +662,12 @@ def main(root_folder):
         summary_filename = os.path.join(analysis_root, f"{filter_name}.summary.png")
         save_current_plot(summary_filename)
         plt.close(fig)
+
+    summary_file = os.path.join(analysis_root, "summary.txt")
+    generate_metrics_summary(
+        df, plot_filters, summary_file, tail_epochs=3, best_performer=False
+    )
+    print(f"Metrics summary saved to {summary_file}")
 
 
 if __name__ == "__main__":
