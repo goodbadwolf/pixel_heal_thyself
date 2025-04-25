@@ -28,14 +28,19 @@ def process_folder(folder_path, overrides_to_names_map):
     """Process a single run folder and extract metric data."""
     overrides_path = os.path.join(folder_path, ".hydra", "overrides.yaml")
     eval_path = os.path.join(folder_path, "evaluation.txt")
+    train_loss_path = os.path.join(folder_path, "train_loss.txt")
 
-    if not os.path.exists(overrides_path) or not os.path.exists(eval_path):
-        return None, None, None, None
+    if (
+        not os.path.exists(overrides_path)
+        or not os.path.exists(eval_path)
+        or not os.path.exists(train_loss_path)
+    ):
+        return None, None, None, None, None, None
 
     with open(eval_path, "r") as f:
         eval_lines = [line.strip() for line in f.readlines() if line.strip()]
         if len(eval_lines) < 20:
-            return None, None, None, None
+            return None, None, None, None, None, None
 
     allowed_overrides = [r"data\.", r"trainer\."]
     with open(overrides_path, "r") as f:
@@ -50,7 +55,7 @@ def process_folder(folder_path, overrides_to_names_map):
 
     if overrides_content not in overrides_to_names_map:
         print(f"Skipping unknown configuration: {overrides_content}")
-        return None, None, None, None
+        return None, None, None, None, None, None
     overrides_content = overrides_to_names_map[overrides_content]
 
     epoch_mrses = {}
@@ -78,7 +83,37 @@ def process_folder(folder_path, overrides_to_names_map):
                 epoch_ssims[epoch] = []
             epoch_ssims[epoch].append(ssim)
 
-    return overrides_content, epoch_mrses, epoch_psnrs, epoch_ssims
+    epoch_g_losses = {}
+    epoch_d_losses = {}
+    with open(train_loss_path, "r") as f:
+        loss_lines = [line.strip() for line in f.readlines() if line.strip()]
+
+        for line in loss_lines:
+            epoch_match = re.search(r"Epoch:\s*(\d+)", line)
+            g_loss_match = re.search(r"G loss:\s*([-\d.]+)", line)
+            d_loss_match = re.search(r"D Loss:\s*([\d.]+)", line)
+
+            if epoch_match and g_loss_match and d_loss_match:
+                epoch = int(epoch_match.group(1))
+                g_loss = float(g_loss_match.group(1))
+                d_loss = float(d_loss_match.group(1))
+
+                if epoch not in epoch_g_losses:
+                    epoch_g_losses[epoch] = []
+                epoch_g_losses[epoch].append(g_loss)
+
+                if epoch not in epoch_d_losses:
+                    epoch_d_losses[epoch] = []
+                epoch_d_losses[epoch].append(d_loss)
+
+    return (
+        overrides_content,
+        epoch_mrses,
+        epoch_psnrs,
+        epoch_ssims,
+        epoch_g_losses,
+        epoch_d_losses,
+    )
 
 
 def find_outliers(metrics):
@@ -130,7 +165,7 @@ def save_current_plot(filename):
     print(f"Plot saved to {filename}")
 
 
-def plot_metric(df, metric_type, colors, markers):
+def plot_metric(df, metric_type, colors, markers, metric_name):
     """Plot a specific metric."""
     fig, ax = plt.subplots(figsize=(12, 8), dpi=150)
 
@@ -177,17 +212,9 @@ def plot_metric(df, metric_type, colors, markers):
     ax.set_xticks(all_epochs)
     ax.set_xticklabels([str(int(epoch)) for epoch in all_epochs])
 
-    # Choose appropriate title and labels
-    metric_name = {"mrses": "MRSE", "psnrs": "PSNR", "ssims": "SSIM"}[metric_type]
-    metric_full = {
-        "mrses": "Mean Reciprocal Square Error",
-        "psnrs": "Peak Signal-to-Noise Ratio",
-        "ssims": "Structural Similarity Index",
-    }[metric_type]
-
     # Set title and labels
     ax.set_title(
-        f"{metric_full} ({metric_name})\nComparison Across Different Configurations",
+        f"{metric_name} ({metric_name})\nComparison Across Different Configurations",
         fontsize=16,
         pad=20,
         fontweight="bold",
@@ -271,11 +298,9 @@ def plot_metric(df, metric_type, colors, markers):
     return fig
 
 
-def create_summary_plot(df, colors, markers):
+def create_summary_plot(df, colors, markers, metric_types, metric_names):
     """Create a summary plot with all metrics side by side."""
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=150)
-    metric_types = ["mrses", "psnrs", "ssims"]
-    metric_names = {"mrses": "MRSE", "psnrs": "PSNR", "ssims": "SSIM"}
+    fig, axes = plt.subplots(1, len(metric_types), figsize=(18, 6), dpi=150)
 
     # Store the legend for placing outside plots
     # lgd = None
@@ -319,10 +344,10 @@ def create_summary_plot(df, colors, markers):
         ax.set_title(f"{metric_names[metric_type]}", fontsize=14)
         ax.grid(True, linestyle="--", alpha=0.5)
 
-        if metric_type == "mrses":
+        if metric_type == "mrses" or metric_type == "g_losses":
             ax.set_ylabel("Average Value", fontsize=12)
 
-        if metric_type == "psnrs":
+        if metric_type == "psnrs" or metric_type == "d_losses":
             # Only add shared legend on middle plot
             handles, labels = ax.get_legend_handles_labels()
             _ = ax.legend(
@@ -340,8 +365,27 @@ def create_summary_plot(df, colors, markers):
 
 
 def generate_metrics_summary(
-    df, plot_filters, output_file, tail_epochs=5, best_performer=False, verbose=False
+    df,
+    plot_filters,
+    output_file,
+    metric_types=None,
+    metric_full_names=None,
+    tail_epochs=5,
+    discard_outliers=False,
+    best_performer=False,
+    verbose=False,
 ):
+    UP_ARROW = "\u2191"
+    DOWN_ARROW = "\u2193"
+    EQUAL_ARROW = "\u2194"
+    if metric_types is None or metric_full_names is None:
+        metric_types = ["mrses", "psnrs", "ssims"]
+        metric_full_names = {
+            "mrses": "MRSE",
+            "psnrs": "PSNR",
+            "ssims": "SSIM",
+        }
+
     with open(output_file, "w") as f:
         f.write("# Metrics Summary Report\n")
         f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
@@ -349,7 +393,9 @@ def generate_metrics_summary(
         f.write("## Config\n")
         f.write("=" * 80 + "\n\n")
         f.write(f"tail_epochs: {tail_epochs}\n")
+        f.write(f"discard_outliers: {discard_outliers}\n")
         f.write(f"best_performer: {best_performer}\n\n")
+        f.write(f"verbose: {verbose}\n\n")
 
         for filter_name, configurations in plot_filters.items():
             f.write(f"\n## Filter: {filter_name}\n")
@@ -405,7 +451,7 @@ def generate_metrics_summary(
 
                     # Table header
                     f.write(
-                        f"{'Configuration':<30} | {'Avg Value':<10} | {'Abs Diff':<10} | {'% Diff':<10} | {'% Trend':<5}\n"
+                        f"{'Configuration':<30} | {'Avg Value':<10} | {'Diff':<10} | {'% Diff':<10} | {'% Trend':<5}\n"
                     )
                     f.write("-" * 80 + "\n")
 
@@ -413,7 +459,7 @@ def generate_metrics_summary(
                     for config in configurations:
                         if config in avg_results:
                             config_value = avg_results[config]
-                            abs_diff = config_value - baseline_value
+                            diff = config_value - baseline_value
 
                             # For PSNR and SSIM, higher is better; for MRSE, lower is better
                             if metric_type == "mrses":
@@ -423,9 +469,9 @@ def generate_metrics_summary(
                                     * 100
                                 )
                                 better = (
-                                    "↓"
-                                    if abs_diff < 0
-                                    else ("=" if abs_diff == 0 else "↑")
+                                    DOWN_ARROW
+                                    if diff < 0
+                                    else (EQUAL_ARROW if diff == 0 else UP_ARROW)
                                 )
                             else:
                                 pct_diff = (
@@ -434,18 +480,18 @@ def generate_metrics_summary(
                                     * 100
                                 )
                                 better = (
-                                    "↑"
-                                    if abs_diff > 0
-                                    else ("=" if abs_diff == 0 else "↓")
+                                    UP_ARROW
+                                    if diff > 0
+                                    else (EQUAL_ARROW if diff == 0 else DOWN_ARROW)
                                 )
 
                             # Format the values with appropriate precision
                             if metric_type == "mrses":
                                 value_str = f"{config_value:.6f}"
-                                abs_diff_str = f"{abs_diff:.6f}"
+                                abs_diff_str = f"{diff:.6f}"
                             else:
                                 value_str = f"{config_value:.3f}"
-                                abs_diff_str = f"{abs_diff:.3f}"
+                                abs_diff_str = f"{diff:.3f}"
 
                             # Skip baseline comparison with itself (diff would be 0)
                             if config == baseline_config:
@@ -548,7 +594,7 @@ plot_filters = {
 }
 
 
-def main(root_folder):
+def main(root_folder, discard_outliers):
     """Main function to process folders and generate plots."""
     analysis_root = os.path.join(root_folder, "analysis")
     os.makedirs(analysis_root, exist_ok=True)
@@ -562,15 +608,31 @@ def main(root_folder):
             "mrses": defaultdict(list),
             "psnrs": defaultdict(list),
             "ssims": defaultdict(list),
+            "g_losses": defaultdict(list),
+            "d_losses": defaultdict(list),
         }
     )
 
     # Process each folder
     for folder in run_folders:
-        overrides_content, epoch_mrses, epoch_psnrs, epoch_ssims = process_folder(
-            folder, overrides_to_names_map
-        )
-        if not all([overrides_content, epoch_mrses, epoch_psnrs, epoch_ssims]):
+        (
+            overrides_content,
+            epoch_mrses,
+            epoch_psnrs,
+            epoch_ssims,
+            epoch_g_losses,
+            epoch_d_losses,
+        ) = process_folder(folder, overrides_to_names_map)
+        if not all(
+            [
+                overrides_content,
+                epoch_mrses,
+                epoch_psnrs,
+                epoch_ssims,
+                epoch_g_losses,
+                epoch_d_losses,
+            ]
+        ):
             continue
 
         for epoch, mrses in epoch_mrses.items():
@@ -579,30 +641,37 @@ def main(root_folder):
             all_data[overrides_content]["psnrs"][epoch].extend(psnrs)
         for epoch, ssims in epoch_ssims.items():
             all_data[overrides_content]["ssims"][epoch].extend(ssims)
+        for epoch, g_losses in epoch_g_losses.items():
+            all_data[overrides_content]["g_losses"][epoch].extend(g_losses)
+        for epoch, d_losses in epoch_d_losses.items():
+            all_data[overrides_content]["d_losses"][epoch].extend(d_losses)
 
     # Filter configurations with enough data points
     filtered_data = {}
-    for overrides, data_dict in all_data.items():
+    for override, data_dict in all_data.items():
         has_enough_datapoints = True
         for epoch, mrses in data_dict["mrses"].items():
             if len(mrses) < 4:
+                print(
+                    f"Configuration {override} has too few data points for epoch {epoch}: {len(mrses)}")
                 has_enough_datapoints = False
                 break
         if has_enough_datapoints:
-            filtered_data[overrides] = data_dict
+            filtered_data[override] = data_dict
 
     print(f"After filtering, {len(filtered_data)} configurations remain")
 
+    outliers_path_fragment = "od" if discard_outliers else "ok"
     # Calculate stats for each metric
     stats_data = []
-    for overrides, data_dict in filtered_data.items():
+    for override, data_dict in filtered_data.items():
         for metric_type, epochs in data_dict.items():
             for epoch, metrics in epochs.items():
-                outliers = find_outliers(metrics)
+                outliers = find_outliers(metrics) if discard_outliers else []
                 stats = calculate_stats(metrics, outliers)
                 stats_data.append(
                     {
-                        "overrides": overrides,
+                        "overrides": override,
                         "epoch": epoch,
                         "metric_type": metric_type,
                         "min": stats["min"],
@@ -612,13 +681,22 @@ def main(root_folder):
                         "values": metrics,
                     }
                 )
-        print(f"Processed {overrides} with {len(metrics)} metrics")
+        print(f"Processed {override} with {len(metrics)} metrics")
 
-    csv_filename = os.path.join(analysis_root, "metrics.csv")
+    csv_filename = os.path.join(analysis_root, f"metrics_{outliers_path_fragment}.csv")
     # Create DataFrame and save to CSV
     df = pd.DataFrame(stats_data)
     df.to_csv(csv_filename, index=False)
     print(f"Metrics saved to {csv_filename}")
+
+    metric_types = ["mrses", "psnrs", "ssims", "g_losses", "d_losses"]
+    metric_names = {
+        "mrses": "MRSE",
+        "psnrs": "PSNR",
+        "ssims": "SSIM",
+        "g_losses": "G Loss",
+        "d_losses": "D Loss",
+    }
 
     # Set up plotting style
     set_plot_style()
@@ -648,24 +726,65 @@ def main(root_folder):
     while len(colors) < max_overrides:
         colors = colors * 2
 
+
     for filter_name, filter in plot_filters.items():
         filtered_df = df[df["overrides"].isin(filter)]
-        for metric_type in ["mrses", "psnrs", "ssims"]:
-            fig = plot_metric(filtered_df, metric_type, colors, markers)
+        for metric_type in metric_types:
+            fig = plot_metric(
+                filtered_df, metric_type, colors, markers, metric_names[metric_type]
+            )
             plot_filename = os.path.join(
-                analysis_root, f"{filter_name}.{metric_type}.png"
+                analysis_root, f"{filter_name}.{metric_type}_{outliers_path_fragment}.png"
             )
             save_current_plot(plot_filename)
             plt.close(fig)
 
-        fig = create_summary_plot(filtered_df, colors, markers)
-        summary_filename = os.path.join(analysis_root, f"{filter_name}.summary.png")
-        save_current_plot(summary_filename)
-        plt.close(fig)
+        # Create a summary plot for evaluation metrics
+        eval_metrics_df = filtered_df[
+            filtered_df["metric_type"].isin(["mrses", "psnrs", "ssims"])
+        ]
+        if not eval_metrics_df.empty:
+            fig = create_summary_plot(
+                eval_metrics_df,
+                colors,
+                markers,
+                metric_types=["mrses", "psnrs", "ssims"],
+                metric_names=metric_names,
+            )
+            summary_filename = os.path.join(
+                analysis_root, f"{filter_name}_{outliers_path_fragment}.eval_summary.png"
+            )
+            save_current_plot(summary_filename)
+            plt.close(fig)
 
-    summary_file = os.path.join(analysis_root, "summary.txt")
+        # Create a summary plot for training losses
+        loss_metrics_df = filtered_df[
+            filtered_df["metric_type"].isin(["g_losses", "d_losses"])
+        ]
+        if not loss_metrics_df.empty:
+            fig = create_summary_plot(
+                loss_metrics_df,
+                colors,
+                markers,
+                metric_types=["g_losses", "d_losses"],
+                metric_names=metric_names,
+            )
+            summary_filename = os.path.join(
+                analysis_root, f"{filter_name}_{outliers_path_fragment}.loss_summary.png"
+            )
+            save_current_plot(summary_filename)
+            plt.close(fig)
+
+    summary_file = os.path.join(analysis_root, f"summary_{outliers_path_fragment}.txt")
     generate_metrics_summary(
-        df, plot_filters, summary_file, tail_epochs=3, best_performer=False
+        df,
+        plot_filters,
+        summary_file,
+        metric_types=metric_types,
+        metric_full_names=metric_names,
+        tail_epochs=3,
+        discard_outliers=discard_outliers,
+        best_performer=False,
     )
     print(f"Metrics summary saved to {summary_file}")
 
@@ -675,6 +794,12 @@ if __name__ == "__main__":
         description="Process run folders and analyze metric data."
     )
     parser.add_argument("root_folder", help="The root folder to search for run folders")
+    parser.add_argument(
+        "--discard-outliers",
+        action="store_true",
+        default=False,
+        help="Discard outliers from the analysis",
+    )
 
     args = parser.parse_args()
-    main(args.root_folder)
+    main(args.root_folder, args.discard_outliers)
