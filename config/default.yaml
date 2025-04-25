@@ -3,6 +3,7 @@ defaults:
   - model: afgsa
   - data: default
   - trainer: default
+  - override hydra/callbacks: custom_run_dirs
 
 seed: 990819
 
