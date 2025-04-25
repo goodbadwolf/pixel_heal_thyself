@@ -41,17 +41,19 @@ class CustomRunDirs:
 
         os.makedirs(base_dir, exist_ok=True)
 
-        # Find the highest run/sweep number
-        highest_num = -1
-        for item in os.listdir(base_dir):
-            match = re.match(rf"{prefix}(\d+)", item)
-            if match:
-                num = int(match.group(1))
-                if num > highest_num:
-                    highest_num = num
-
+        run_num = config.get("run_num", -1)
+        if run_num != -1:
+            next_num = run_num
+        else:
+            highest_num = -1
+            for item in os.listdir(base_dir):
+                match = re.match(rf"{prefix}(\d+)", item)
+                if match:
+                    num = int(match.group(1))
+                    if num > highest_num:
+                        highest_num = num
+            next_num = highest_num + 1
         # Create the next run/sweep directory
-        next_num = highest_num + 1
         output_dir = os.path.join(base_dir, f"{prefix}{next_num:03d}")
         os.makedirs(output_dir, exist_ok=True)
 

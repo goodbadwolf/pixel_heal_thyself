@@ -9,6 +9,8 @@ seed: 990819
 
 data_ratio: 0.95
 
+run_num: -1
+
 paths:
   root: ${hydra:runtime.cwd}
   out_dir: ${hydra:run.dir}
