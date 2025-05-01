@@ -199,90 +199,8 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
 
     # Save figure
     plt.savefig(output_path, bbox_inches="tight", dpi=300)
+    time.sleep(1)  # Ensure the file is saved before closing
     print(f"Box plots for dataset {dataset} saved to {output_path}")
-    plt.close(fig)
-
-
-def create_histogram_plots(data_dict, dataset, output_path, discard_outliers=False):
-    """Create histogram plots comparing models for a specific dataset."""
-    metric_names = {
-        "rmse": "RMSE (lower is better)",
-        "psnr": "PSNR (higher is better)",
-        "ssim": "SSIM (higher is better)",
-    }
-
-    # Create figure with multiple subplots
-    fig, axes = plt.subplots(3, 1, figsize=(10, 15), dpi=150)
-
-    # Create histograms for each metric
-    for i, (metric, title) in enumerate(metric_names.items()):
-        # Set individual plot
-        ax = axes[i]
-
-        # Create histogram for each model
-        for model_name, model_data in data_dict.items():
-            if dataset in model_data["datasets"]:
-                metrics = model_data["datasets"][dataset][metric]
-                if discard_outliers:
-                    outliers = find_outliers(metrics)
-                    metrics = [m for m in metrics if m not in outliers]
-
-                sns.histplot(
-                    metrics,
-                    ax=ax,
-                    label=model_name,
-                    kde=True,
-                    element="step",
-                    alpha=0.6,
-                )
-
-        # Set title and labels
-        ax.set_title(title, fontsize=14, fontweight="bold")
-        ax.set_xlabel("Value", fontsize=12)
-        ax.set_ylabel("Frequency", fontsize=12)
-        ax.legend()
-
-        # Add mean lines
-        for model_name, model_data in data_dict.items():
-            if dataset in model_data["datasets"]:
-                metrics = model_data["datasets"][dataset][metric]
-                if discard_outliers:
-                    outliers = find_outliers(metrics)
-                    metrics = [m for m in metrics if m not in outliers]
-
-                mean_val = np.mean(metrics)
-                ax.axvline(
-                    mean_val,
-                    color=ax.lines[-1].get_color(),
-                    linestyle="--",
-                    linewidth=2,
-                    label=f"{model_name} Mean: {mean_val:.3f}",
-                )
-
-                # Add text annotation for mean
-                y_pos = ax.get_ylim()[1] * 0.9
-                ax.text(
-                    mean_val,
-                    y_pos,
-                    f"{mean_val:.3f}",
-                    ha="center",
-                    va="center",
-                    fontweight="bold",
-                    color=ax.lines[-1].get_color(),
-                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none", pad=1),
-                )
-
-    # Adjust layout
-    plt.tight_layout()
-    plt.suptitle(
-        f"Dataset: {dataset} - Distribution of Metrics across Models",
-        fontsize=16,
-        y=1.0,
-    )
-
-    # Save figure
-    plt.savefig(output_path, bbox_inches="tight", dpi=300)
-    print(f"Histogram plots for dataset {dataset} saved to {output_path}")
     plt.close(fig)
 
 
@@ -434,7 +352,6 @@ def create_dataset_comparison_plot_summary(
     time.sleep(1)  # Ensure the file is saved before closing
     print(f"Summary comparison plot saved to {output_path}")
     plt.close(fig)
-    return
 
 
 def create_dataset_comparison_plot(
@@ -545,8 +462,9 @@ def create_dataset_comparison_plot(
         for bar in bars:
             height = bar.get_height()
             if not np.isnan(height):
+                val = height * 10**4 if metric == "rmse" else height
                 ax.annotate(
-                    fmt.format(height * 10**4),
+                    fmt.format(val),
                     xy=(bar.get_x() + bar.get_width() / 2, height),
                     xytext=(0, 3),  # 3 points vertical offset
                     textcoords="offset points",
@@ -555,7 +473,7 @@ def create_dataset_comparison_plot(
                     fontsize=8,
                 )
 
-    fmt = "{:.2f}" if metric == "rmse" else "{:.3f}"
+    fmt = "{:.2f}" if metric == "rmse" else "{:.2f}"
     add_labels(baseline_bars, ax1, fmt)
     add_labels(variant_bars, ax1, fmt)
 
@@ -569,7 +487,7 @@ def create_dataset_comparison_plot(
 
     # Fixed y-limits for SSIM
     elif metric == "ssim":
-        ax1.set_ylim([0.94, 0.96])  # Narrow range to highlight small differences
+        ax1.set_ylim([0.9, 1.0])
 
     # ax1.set_ylabel(metric.upper(), fontsize=12)
     ax1.set_title(f"{title} by Dataset", fontsize=14, fontweight="bold")
@@ -624,9 +542,9 @@ def create_dataset_comparison_plot(
 
     # Save figure
     plt.savefig(output_path, bbox_inches="tight", dpi=300)
+    time.sleep(1)  # Ensure the file is saved before closing
     print(f"Dataset comparison plot for {metric} saved to {output_path}")
     plt.close(fig)
-    time.sleep(1)  # Ensure the file is saved before closing
 
 
 def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=False):
@@ -883,7 +801,7 @@ def generate_summary_report(
                     diff_fmt = f"{diff:.6f}" if metric == "rmse" else f"{diff:.3f}"
 
                     f.write(
-                        f"{dataset:<15} | {baseline_fmt:<10} | {variant_fmt:<10} | {diff_fmt:<10} | {pct_change:+.2f}%:<10 | {better:<8}\n"
+                        f"{dataset:<15} | {baseline_fmt:<10} | {variant_fmt:<10} | {diff_fmt:<10} | {pct_change:+00.2f}% {'':<6} | {better:<8}\n"
                     )
                 else:
                     # Missing data for one model
@@ -991,12 +909,6 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
             output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png"
         )
         create_box_plots(data_dict, dataset, box_plot_path, discard_outliers)
-
-        # Histogram plots
-        hist_plot_path = os.path.join(
-            output_dir, f"{dataset[:-1]}_histograms{outliers_suffix}.png"
-        )
-        create_histogram_plots(data_dict, dataset, hist_plot_path, discard_outliers)
 
     # Generate cross-dataset comparison plots
     for metric in ["rmse", "psnr", "ssim"]:
