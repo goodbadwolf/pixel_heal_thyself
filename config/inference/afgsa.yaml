@@ -1,0 +1,3 @@
+defaults:
+  - override /inference: default
+  - _self_
