@@ -122,21 +122,44 @@ def calculate_stats(metrics, outliers=None, discard_outliers=False):
 
 
 def set_plot_style():
-    """Set the global plotting style."""
-    sns.set_style("whitegrid")
+    """Set the global plotting style with enhanced aesthetics."""
+    # Use a more modern seaborn style
+    sns.set_style("whitegrid", {"grid.linestyle": ":"})
+
+    # Set color palette - using a more visually pleasing palette
+    sns.set_palette("deep")
+
+    # Font settings
     plt.rcParams["font.family"] = "sans-serif"
-    plt.rcParams["font.sans-serif"] = ["Arial", "DejaVu Sans", "Liberation Sans"]
-    plt.rcParams["axes.facecolor"] = "#f8f9fa"
+    plt.rcParams["font.sans-serif"] = ["Roboto", "Arial", "DejaVu Sans"]
+    plt.rcParams["font.size"] = 11
+    plt.rcParams["axes.titlesize"] = 14
+    plt.rcParams["axes.labelsize"] = 12
+    plt.rcParams["xtick.labelsize"] = 10
+    plt.rcParams["ytick.labelsize"] = 10
+
+    # Figure aesthetics
     plt.rcParams["figure.facecolor"] = "white"
-    plt.rcParams["axes.edgecolor"] = "#dddddd"
-    plt.rcParams["axes.linewidth"] = 1.2
+    plt.rcParams["axes.facecolor"] = "#f8f9fa"
+    plt.rcParams["axes.edgecolor"] = "#cccccc"
+    plt.rcParams["axes.linewidth"] = 1.0
+
+    # Grid settings
     plt.rcParams["axes.grid"] = True
     plt.rcParams["grid.color"] = "#e0e0e0"
-    plt.rcParams["grid.linestyle"] = "--"
+    plt.rcParams["grid.linewidth"] = 0.8
+
+    # Legend settings
+    plt.rcParams["legend.frameon"] = True
+    plt.rcParams["legend.fancybox"] = True
+    plt.rcParams["legend.shadow"] = False
+    plt.rcParams["legend.framealpha"] = 0.8
+    plt.rcParams["legend.edgecolor"] = "#cccccc"
 
 
+# Enhanced box plot function with prettier aesthetics
 def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
-    """Create box plots comparing models for a specific dataset."""
+    """Create box plots comparing models for a specific dataset with enhanced visuals."""
     metric_names = {
         "rmse": "RMSE (lower is better)",
         "psnr": "PSNR (higher is better)",
@@ -144,7 +167,12 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
     }
 
     # Create figure with multiple subplots
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=150)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=180)
+
+    # Custom color palette
+    palette = ["#3366CC", "#FF9933"]
+
+    data_ranges = {}
 
     # Create box plots for each metric
     for i, (metric, title) in enumerate(metric_names.items()):
@@ -158,52 +186,138 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
                 if discard_outliers:
                     outliers = find_outliers(metrics)
                     metrics = [m for m in metrics if m not in outliers]
-                if metric == "rmse":
-                    metrics = [m * 10**4 for m in metrics]
                 plot_data.append(metrics)
                 labels.append(model_name)
+                if metric not in data_ranges:
+                    data_ranges[metric] = (min(metrics), max(metrics))
+                else:
+                    data_ranges[metric] = (
+                        min(data_ranges[metric][0], min(metrics)),
+                        max(data_ranges[metric][1], max(metrics)),
+                    )
+        # Create prettier box plot
+        bplot = sns.boxplot(
+            data=plot_data,
+            ax=axes[i],
+            palette=palette,
+            width=0.5,
+            linewidth=1.2,
+            fliersize=4,
+            boxprops=dict(alpha=0.8),
+            medianprops=dict(color="black"),
+            showmeans=True,
+            meanprops=dict(
+                marker="o",
+                markerfacecolor="white",
+                markeredgecolor="black",
+                markersize=8,
+            ),
+        )
 
-        # Create box plot
-        sns.boxplot(data=plot_data, ax=axes[i], palette="viridis")
+        # Add swarm plot for individual data points with better visibility
+        sns.swarmplot(
+            data=plot_data,
+            ax=axes[i],
+            color="black",
+            alpha=0.5,
+            size=4,
+            edgecolor="gray",
+            linewidth=0.5,
+        )
 
-        # Add swarm plot for individual data points
-        sns.swarmplot(data=plot_data, ax=axes[i], color="black", alpha=0.5, size=3)
-
-        # Add mean values as text
+        # Add mean values as text with better styling
         for j, values in enumerate(plot_data):
             if values:
                 mean_val = np.mean(values)
+                mean_val_str = f"{mean_val:.2f}"
+                if metric == "rmse":
+                    mean_val_str = f"{mean_val * 10**4:.2f}"
                 axes[i].text(
                     j,
                     mean_val,
-                    f"{mean_val:.2f}",
+                    mean_val_str,
                     ha="center",
                     va="bottom",
                     fontweight="bold",
-                    bbox=dict(facecolor="white", alpha=0.8, edgecolor="none", pad=1),
+                    fontsize=9,
+                    color="#333333",
+                    bbox=dict(
+                        facecolor="white",
+                        alpha=0.9,
+                        edgecolor="#cccccc",
+                        boxstyle="round,pad=0.3",
+                        linewidth=0.5,
+                    ),
                 )
-        # Set title and labels
+
+        # Set title and labels with better styling
         ylabel = "RMSE ($\\times 10^{-4}$)" if metric == "rmse" else metric.upper()
-        axes[i].set_title(title, fontsize=14, fontweight="bold")
-        axes[i].set_ylabel(ylabel, fontsize=12)
+        axes[i].set_title(title, fontsize=14, fontweight="bold", pad=15)
+        axes[i].set_ylabel(ylabel, fontsize=12, labelpad=10)
         axes[i].set_xticks(range(len(labels)))
-        axes[i].set_xticklabels(labels, rotation=0, ha="center")
+        axes[i].set_xticklabels(labels, rotation=0, ha="center", fontweight="semibold")
+
+        # Adjust the data ranges for clean ranges
+        if metric == "rmse":
+            data_ranges[metric] = (
+                max(0, data_ranges[metric][0] - 0.0003),
+                data_ranges[metric][1] + 0.0003,
+            )
+        elif metric == "psnr":
+            data_ranges[metric] = (
+                max(30, data_ranges[metric][0] - 1),
+                data_ranges[metric][1] + 1,
+            )
+        elif metric == "ssim":
+            data_ranges[metric] = (
+                max(0.9, data_ranges[metric][0] - 0.01),
+                min(1.0, data_ranges[metric][1] + 0.01),
+            )
+
+        axes[i].set_ylim(data_ranges[metric][0], data_ranges[metric][1])
+        if metric == "rmse":
+            # axes[i].set_ylim(0, 0.002)
+            axes[i].yaxis.set_major_formatter(
+                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.2f}")
+            )
+        elif metric == "psnr":
+            # axes[i].set_ylim(35, 43)
+            pass
+        elif metric == "ssim":
+            # axes[i].set_ylim(0.93, 0.98)
+            pass
+
+        # Add a light border to the plot area
+        for spine in axes[i].spines.values():
+            spine.set_edgecolor("#cccccc")
+            spine.set_linewidth(0.8)
+
+        # Add subtle background shading to alternate rows
+        if len(plot_data) > 0:
+            for j in range(len(plot_data[0])):
+                if j % 2 == 0:
+                    axes[i].axhspan(j - 0.5, j + 0.5, alpha=0.05, color="gray")
 
     # Adjust layout
     plt.tight_layout()
+
+    # Add an appealing title
     plt.suptitle(
         f"Dataset: {dataset} - Comparison of Models across Metrics",
         fontsize=16,
         y=1.05,
+        fontweight="bold",
+        color="#333333",
     )
 
-    # Save figure
-    plt.savefig(output_path, bbox_inches="tight", dpi=300)
+    # Save figure with high quality and tight border
+    plt.savefig(output_path, bbox_inches="tight", dpi=300, facecolor="white")
     time.sleep(1)  # Ensure the file is saved before closing
     print(f"Box plots for dataset {dataset} saved to {output_path}")
     plt.close(fig)
 
 
+# Enhanced summary comparison function
 def create_dataset_comparison_plot_summary(
     data_dict,
     metric,
@@ -211,8 +325,7 @@ def create_dataset_comparison_plot_summary(
     discard_outliers=False,
     variant_name="variant",
 ):
-    """Create plot comparing performance across datasets."""
-    # If summary_mode is True, we'll create a plot with all metrics
+    """Create plot comparing performance across datasets with improved visuals."""
     # Get all datasets
     all_datasets = set()
     for model_data in data_dict.values():
@@ -228,8 +341,12 @@ def create_dataset_comparison_plot_summary(
     metric_names = {"rmse": "RMSE", "psnr": "PSNR", "ssim": "SSIM"}
     better_is_higher = {"rmse": False, "psnr": True, "ssim": True}
 
+    # Custom colors for more visual appeal
+    baseline_color = "#3366CC"  # Blue
+    variant_color = "#FF9933"  # Orange
+
     # Create figure with three subplots (one for each metric)
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=150)
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=180)
 
     # Create plots for each metric
     for i, metric in enumerate(metrics):
@@ -278,16 +395,32 @@ def create_dataset_comparison_plot_summary(
                 )
                 variant_means.append(np.mean(variant_vals) if variant_vals else np.nan)
 
-        # Plot means
+        # Plot means with enhanced styling
         x = np.arange(len(all_datasets))
-        width = 0.25  # Slightly wider bars
+        width = 0.3  # Slightly wider bars for better visibility
 
-        # Bar plot: absolute values
+        # Bar plot: absolute values with enhanced styling
         baseline_bars = ax.bar(
-            x - width / 2, baseline_means, width, label="Baseline", color="#1f77b4"
+            x - width / 2,
+            baseline_means,
+            width,
+            label="Baseline",
+            color=baseline_color,
+            edgecolor="white",
+            linewidth=0.8,
+            alpha=0.85,
+            zorder=10,
         )
         variant_bars = ax.bar(
-            x + width / 2, variant_means, width, label=variant_name, color="#ff7f0e"
+            x + width / 2,
+            variant_means,
+            width,
+            label=variant_name,
+            color=variant_color,
+            edgecolor="white",
+            linewidth=0.8,
+            alpha=0.85,
+            zorder=10,
         )
 
         # Format value labels based on metric
@@ -297,24 +430,34 @@ def create_dataset_comparison_plot_summary(
             ax.yaxis.set_major_formatter(
                 plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
             )
-            ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12)
+            ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12, labelpad=10)
         else:
             # For PSNR and SSIM, use regular decimal format
             formatter = lambda x: f"{x:.3f}"
-            ax.set_ylabel(metric.upper(), fontsize=12)
+            ax.set_ylabel(metric.upper(), fontsize=12, labelpad=10)
 
-        # Add value labels on bars
+        # Add value labels on bars with enhanced styling
         for bar in baseline_bars:
             height = bar.get_height()
             if not np.isnan(height):
                 ax.annotate(
                     formatter(height),
                     xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),
+                    xytext=(0, 4),
                     textcoords="offset points",
                     ha="center",
                     va="bottom",
-                    fontsize=8,
+                    fontsize=9,
+                    fontweight="bold",
+                    color="#333333",
+                    bbox=dict(
+                        facecolor="white",
+                        alpha=0.8,
+                        edgecolor="#cccccc",
+                        boxstyle="round,pad=0.2",
+                        linewidth=0.5,
+                    ),
+                    zorder=15,
                 )
 
         for bar in variant_bars:
@@ -323,32 +466,92 @@ def create_dataset_comparison_plot_summary(
                 ax.annotate(
                     formatter(height),
                     xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),
+                    xytext=(0, 4),
                     textcoords="offset points",
                     ha="center",
                     va="bottom",
-                    fontsize=8,
+                    fontsize=9,
+                    fontweight="bold",
+                    color="#333333",
+                    bbox=dict(
+                        facecolor="white",
+                        alpha=0.8,
+                        edgecolor="#cccccc",
+                        boxstyle="round,pad=0.2",
+                        linewidth=0.5,
+                    ),
+                    zorder=15,
                 )
 
-        ax.set_ylabel(metric.upper(), fontsize=12)
+        # Add horizontal grid lines for better readability
+        ax.yaxis.grid(True, linestyle=":", linewidth=0.8, alpha=0.7, zorder=0)
+        ax.set_axisbelow(True)  # Place grid behind all other elements
+
+        # Remove top and right spines for cleaner look
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+
+        # Enhanced styling for titles and labels
         ax.set_title(
-            f"{metric_names[metric]} by Dataset", fontsize=14, fontweight="bold"
+            f"{metric_names[metric]} by Dataset", fontsize=14, fontweight="bold", pad=15
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(all_datasets, rotation=0, ha="center")
-        if i == 0:  # Only add legend to first plot
-            ax.legend()
+        ax.set_xticklabels(all_datasets, rotation=0, ha="center", fontweight="semibold")
 
+        # Set y-axis limits appropriately
+        if metric == "rmse":
+            y_min = 0
+            y_max = (
+                max([m for m in baseline_means + variant_means if not np.isnan(m)])
+                * 1.15
+            )
+            ax.set_ylim([y_min, y_max])
+        elif metric == "psnr":
+            y_min = (
+                min([m for m in baseline_means + variant_means if not np.isnan(m)])
+                * 0.95
+            )
+            y_max = (
+                max([m for m in baseline_means + variant_means if not np.isnan(m)])
+                * 1.05
+            )
+            ax.set_ylim([y_min, y_max])
+        elif metric == "ssim":
+            # For SSIM, focus on the relevant range (typically high values)
+            min_val = min(
+                [m for m in baseline_means + variant_means if not np.isnan(m)]
+            )
+            y_min = max(0.9 * min_val, 0)
+            y_max = 1.0
+            ax.set_ylim([y_min, y_max])
+
+        # Enhanced legend with better formatting
+        if i == 0:  # Only add legend to first plot
+            legend = ax.legend(
+                loc="upper right",
+                frameon=True,
+                fancybox=True,
+                framealpha=0.9,
+                edgecolor="#cccccc",
+                fontsize=10,
+            )
+            legend.get_frame().set_linewidth(0.8)
+
+    # Adjust layout for better spacing
     plt.tight_layout()
-    plt.subplots_adjust(wspace=0.2)  # Reduce space between subplots
+    plt.subplots_adjust(wspace=0.15)
+
+    # Add a nicer title
     plt.suptitle(
         f"Comparison of All Metrics Across Datasets: {variant_name} vs Baseline",
         fontsize=16,
         y=1.02,
+        fontweight="bold",
+        color="#333333",
     )
 
-    # Save figure
-    plt.savefig(output_path, bbox_inches="tight", dpi=300)
+    # Save figure with high quality
+    plt.savefig(output_path, bbox_inches="tight", dpi=300, facecolor="white")
     time.sleep(1)  # Ensure the file is saved before closing
     print(f"Summary comparison plot saved to {output_path}")
     plt.close(fig)
@@ -361,6 +564,8 @@ def create_dataset_comparison_plot(
     discard_outliers=False,
     variant_name="variant",
 ):
+    """Create a single plot comparing performance across datasets for a specific metric,
+    with improvement percentages shown directly on the bars."""
     # Get all datasets
     all_datasets = set()
     for model_data in data_dict.values():
@@ -429,119 +634,196 @@ def create_dataset_comparison_plot(
             variant_means.append(np.mean(variant_vals) if variant_vals else np.nan)
             improvements.append(np.nan)
 
-    # Create figure with two subplots
-    fig, (ax1, ax2) = plt.subplots(
-        2, 1, figsize=(12, 10), dpi=150, gridspec_kw={"height_ratios": [2, 1]}
-    )
+    # Create figure with a single plot for the main comparison
+    fig, ax = plt.subplots(figsize=(14, 8), dpi=180)
+
+    # Custom colors for more visual appeal
+    baseline_color = "#3366CC"  # Blue
+    variant_color = "#FF9933"  # Orange
 
     # Plot means
     x = np.arange(len(all_datasets))
-    width = 0.3
+    width = 0.35  # Wider bars for better visibility
 
-    # First plot: absolute values
-    baseline_bars = ax1.bar(
-        x - width / 2, baseline_means, width, label="Baseline", color="#1f77b4"
+    # Bar plot: absolute values with enhanced styling
+    baseline_bars = ax.bar(
+        x - width / 2,
+        baseline_means,
+        width,
+        label="Baseline",
+        color=baseline_color,
+        edgecolor="white",
+        linewidth=0.8,
+        alpha=0.85,
+        zorder=10,
     )
-    variant_bars = ax1.bar(
-        x + width / 2, variant_means, width, label=variant_name, color="#ff7f0e"
+    variant_bars = ax.bar(
+        x + width / 2,
+        variant_means,
+        width,
+        label=variant_name,
+        color=variant_color,
+        edgecolor="white",
+        linewidth=0.8,
+        alpha=0.85,
+        zorder=10,
     )
 
     # Format value labels based on metric
     if metric == "rmse":
-        # For RMSE values which are small numbers, use scientific notation
-        ax1.yaxis.set_major_formatter(
-            plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
+        # Scientific notation for RMSE
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}"))
+        ax.set_ylabel(
+            "RMSE ($\\times 10^{-4}$)", fontsize=12, fontweight="semibold", labelpad=10
         )
-        ax1.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12)
     else:
-        # For PSNR and SSIM, use regular decimal format
-        ax1.set_ylabel(metric.upper(), fontsize=12)
+        # Regular format for PSNR and SSIM
+        ax.set_ylabel(metric.upper(), fontsize=12, fontweight="semibold", labelpad=10)
 
-    # Add value labels on top of bars
-    def add_labels(bars, ax, fmt):
-        for bar in bars:
-            height = bar.get_height()
-            if not np.isnan(height):
-                val = height * 10**4 if metric == "rmse" else height
-                ax.annotate(
-                    fmt.format(val),
-                    xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 3),  # 3 points vertical offset
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                )
-
-    fmt = "{:.2f}" if metric == "rmse" else "{:.2f}"
-    add_labels(baseline_bars, ax1, fmt)
-    add_labels(variant_bars, ax1, fmt)
-
-    # Fixed y-limits for RMSE (showing values as ×10⁻⁴)
-    if metric == "rmse":
-        ax1.set_ylim([0, 0.0030])
-
-    # Fixed y-limits for PSNR
-    elif metric == "psnr":
-        ax1.set_ylim([30, 45])
-
-    # Fixed y-limits for SSIM
-    elif metric == "ssim":
-        ax1.set_ylim([0.9, 1.0])
-
-    # ax1.set_ylabel(metric.upper(), fontsize=12)
-    ax1.set_title(f"{title} by Dataset", fontsize=14, fontweight="bold")
-    ax1.set_xticks(x)
-    ax1.set_xticklabels(all_datasets, rotation=0, ha="center")
-    ax1.legend()
-
-    # Second plot: improvement percentages
-    colors = ["#2ca02c" if imp > 0 else "#d62728" for imp in improvements]
-    ax2.bar(x, improvements, color=colors)
-
-    # Add value labels on top of bars
-    for i, v in enumerate(improvements):
-        if not np.isnan(v):
-            ax2.text(
-                i,
-                v + (1 if v > 0 else -1),
-                f"{v:.1f}%",
+    # Add value labels on baseline bars
+    for i, bar in enumerate(baseline_bars):
+        height = bar.get_height()
+        if not np.isnan(height):
+            val = height * 10**4 if metric == "rmse" else height
+            ax.annotate(
+                f"{val:.2f}",
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, 4),
+                textcoords="offset points",
                 ha="center",
-                va="bottom" if v > 0 else "top",
+                va="bottom",
                 fontsize=9,
+                fontweight="bold",
+                color="#333333",
+                bbox=dict(
+                    facecolor="white",
+                    alpha=0.8,
+                    edgecolor="#cccccc",
+                    boxstyle="round,pad=0.2",
+                    linewidth=0.5,
+                ),
+                zorder=15,
             )
 
-    ax2.axhline(0, color="black", linestyle="-", linewidth=0.5)
-    ax2.set_ylabel("Improvement (%)", fontsize=12)
-    ax2.set_title(
-        f"Improvement of {variant_name} over Baseline", fontsize=14, fontweight="bold"
-    )
-    ax2.set_xticks(x)
-    ax2.set_xticklabels(all_datasets, rotation=0, ha="center")
+    # Add value labels on variant bars with improvement percentage
+    for i, bar in enumerate(variant_bars):
+        height = bar.get_height()
+        if (
+            not np.isnan(height)
+            and i < len(improvements)
+            and not np.isnan(improvements[i])
+        ):
+            val = height * 10**4 if metric == "rmse" else height
 
-    # Add explanation of improvement
+            # Determine if improvement is positive or negative for coloring
+            imp = improvements[i]
+            imp_color = (
+                "#2ca02c" if imp > 0 else "#d62728"
+            )  # Green if positive, red if negative
+
+            # Create label text with value and improvement percentage
+            label_text = f"{val:.2f}\n({imp:+.1f}%)"
+
+            # Add the annotation
+            ax.annotate(
+                label_text,
+                xy=(bar.get_x() + bar.get_width() / 2, height),
+                xytext=(0, -height * 0.5),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=9,
+                fontweight="bold",
+                color=imp_color,
+                bbox=dict(
+                    facecolor="white",
+                    alpha=0.9,
+                    edgecolor="#cccccc",
+                    boxstyle="round,pad=0.3",
+                    linewidth=0.5,
+                ),
+                zorder=15,
+            )
+
+    # Set appropriate y-axis limits based on the metric
     if metric == "rmse":
-        ax2.annotate(
-            "Positive % = lower RMSE (better)",
-            xy=(0.02, 0.02),
-            xycoords="axes fraction",
-            fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+        ax.set_ylim(
+            [
+                0,
+                max([m for m in baseline_means + variant_means if not np.isnan(m)])
+                * 1.15,
+            ]
         )
-    else:
-        ax2.annotate(
-            f"Positive % = higher {metric.upper()} (better)",
-            xy=(0.02, 0.02),
-            xycoords="axes fraction",
-            fontsize=9,
-            bbox=dict(boxstyle="round,pad=0.3", fc="white", alpha=0.8),
+    elif metric == "psnr":
+        min_val = (
+            min([m for m in baseline_means + variant_means if not np.isnan(m)]) * 0.97
         )
+        max_val = (
+            max([m for m in baseline_means + variant_means if not np.isnan(m)]) * 1.03
+        )
+        ax.set_ylim([min_val, max_val])
+    elif metric == "ssim":
+        min_val = (
+            min([m for m in baseline_means + variant_means if not np.isnan(m)]) * 0.995
+        )
+        ax.set_ylim([min_val, 1.0])
 
+    # Add horizontal grid lines for better readability
+    ax.yaxis.grid(True, linestyle=":", linewidth=0.8, alpha=0.7, zorder=0)
+    ax.set_axisbelow(True)  # Place grid behind all other elements
+
+    # Remove top and right spines for cleaner look
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Enhanced title and axis labels
+    # ax.set_title(f"{title}", fontsize=15, fontweight="bold", pad=15, color="#333333")
+    ax.set_xticks(x)
+    ax.set_xticklabels(all_datasets, rotation=0, ha="center", fontweight="semibold")
+
+    # Enhanced legend
+    legend = ax.legend(
+        loc="upper right",
+        frameon=True,
+        fancybox=True,
+        framealpha=0.9,
+        edgecolor="#cccccc",
+        fontsize=10,
+    )
+    legend.get_frame().set_linewidth(0.8)
+
+    # Add explanation of improvement with enhanced styling
+    explanation = (
+        "Positive % = lower RMSE (better)"
+        if metric == "rmse"
+        else f"Positive % = higher {metric.upper()} (better)"
+    )
+    ax.annotate(
+        explanation,
+        xy=(0.02, 0.02),
+        xycoords="axes fraction",
+        fontsize=10,
+        fontweight="semibold",
+        bbox=dict(
+            boxstyle="round,pad=0.4", fc="white", ec="#cccccc", alpha=0.9, linewidth=0.8
+        ),
+        zorder=15,
+    )
+
+    # Adjust layout for better spacing
     plt.tight_layout()
-    plt.subplots_adjust(hspace=0.3)
 
-    # Save figure
-    plt.savefig(output_path, bbox_inches="tight", dpi=300)
+    # Add overall figure title with enhanced styling
+    plt.suptitle(
+        f"{metric_names[metric]}: {variant_name} vs Baseline Comparison",
+        fontsize=16,
+        fontweight="bold",
+        y=0.98,
+        color="#333333",
+    )
+
+    # Save figure with high quality
+    plt.savefig(output_path, bbox_inches="tight", dpi=300, facecolor="white")
     time.sleep(1)  # Ensure the file is saved before closing
     print(f"Dataset comparison plot for {metric} saved to {output_path}")
     plt.close(fig)
@@ -908,6 +1190,7 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
         box_plot_path = os.path.join(
             output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png"
         )
+
         create_box_plots(data_dict, dataset, box_plot_path, discard_outliers)
 
     # Generate cross-dataset comparison plots
