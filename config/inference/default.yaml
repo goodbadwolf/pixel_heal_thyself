@@ -1,0 +1,9 @@
+in_dir: ${paths.root}/data/images_inference
+model_dir: ${paths.root}
+model_file: null
+file_name: null
+pattern: "*_32.exr"
+overlap: 5
+load_gt: true
+gt_dir: ${inference.in_dir}
+gt_suffix: "_gt"
