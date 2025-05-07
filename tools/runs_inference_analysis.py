@@ -159,6 +159,7 @@ def set_plot_style():
 
 # Enhanced box plot function with prettier aesthetics
 def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
+    return
     """Create box plots comparing models for a specific dataset with enhanced visuals."""
     metric_names = {
         "rmse": "RMSE (lower is better)",
