@@ -10,8 +10,10 @@ def main(cfg: DictConfig) -> None:
     """
     if cfg.model.name == "afgsa":
         from pht.models.afgsa import inference as afgsa_inf_mod
-
         afgsa_inf_mod.run(cfg)
+    elif cfg.model.name == "mamba":
+        from pht.models.mamba import inference as mamba_inf_mod
+        mamba_inf_mod.run(cfg)
     else:
         raise ValueError(f"Unsupported model for inference: {cfg.model.name}")
 
