@@ -7,7 +7,14 @@ Deep-learning based denoiser for volumetric path traced images.
 ```bash
 git clone https://github.com/goodbadwolf/pixel_heal_thyself.git
 cd pixel_heal_thyself
-uv install
+
+uv venv # create a virtual environment
+source .venv/bin/activate # activate the virtual environment
+
+# causal-conv1d needs to be build with --no-build-isolation, which requires torch to be installed first
+uv pip install torch torchvision --extra-index-url https://download.pytorch.org/whl/cu126
+uv pip install causal-conv1d --no-build-isolation
+uv sync
 ```
 
 ## Training

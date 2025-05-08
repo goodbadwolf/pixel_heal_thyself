@@ -1,5 +1,5 @@
 [project]
-name = "PixelHealThyself"
+name = "Pixel-Heal-Thyself"
 version = "0.1.0"
 description = "Deep learning based image denoiser for volumetric path traced images"
 readme = "README.md"

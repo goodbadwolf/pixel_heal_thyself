@@ -1,0 +1,9 @@
+name: mamba
+in_ch: 3
+aux_in_ch: 7
+base_ch: 256
+num_blocks: 5
+d_state: 64
+d_conv: 4
+expansion: 4
+num_gcp: 0
