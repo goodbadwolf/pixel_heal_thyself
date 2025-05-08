@@ -2,12 +2,14 @@ import math
 import os
 import time
 from abc import ABC, abstractmethod
+from typing import Tuple, Optional
 
 import lpips
 import torch
 import torch.optim as optim
 from omegaconf import DictConfig
 from torch.optim import lr_scheduler
+from torch.nn import Module
 
 from pht.models.afgsa.dataset import Dataset
 from pht.models.afgsa.discriminators import MultiScaleDiscriminator
@@ -34,23 +36,40 @@ from pht.models.afgsa.util import (
     tensor2img,
 )
 
+# Global constants
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-permutation = [0, 3, 1, 2]
+permutation = [0, 3, 1, 2]  # NHWC → NCHW
 
 
 class BaseTrainer(ABC):
+    """Base class for all model trainers in the PHT project."""
+    
     def __init__(self, cfg: DictConfig):
+        """Initialize the trainer with configuration.
+        
+        Args:
+            cfg: Hydra configuration object
+        """
         self.cfg = cfg
         self.deterministic = cfg.trainer.get("deterministic", False)
+        # Extract model name from the trainer class name (e.g., AFGSATrainer -> AFGSA)
         self.model_name = self.__class__.__name__.replace("Trainer", "")
 
     @abstractmethod
-    def create_generator(self):
-        """Create and return the generator model"""
+    def create_generator(self) -> Module:
+        """Create and return the generator model.
+        
+        Returns:
+            A PyTorch model that serves as the generator
+        """
         pass
 
-    def create_discriminator(self):
-        """Create and return the discriminator model"""
+    def create_discriminator(self) -> Module:
+        """Create and return the discriminator model.
+        
+        Returns:
+            A PyTorch model that serves as the discriminator
+        """
         if self.cfg.trainer.use_multiscale_discriminator:
             return MultiScaleDiscriminator(
                 in_nc=self.cfg.model.in_ch, patch_size=self.cfg.data.patches.patch_size
@@ -58,8 +77,12 @@ class BaseTrainer(ABC):
         else:
             return DiscriminatorVGG(3, 64, self.cfg.data.patches.patch_size).to(device)
 
-    def create_losses(self):
-        """Create and return the loss functions"""
+    def create_losses(self) -> Tuple[Module, Module, Module, Optional[Module], Optional[Module]]:
+        """Create and return the loss functions.
+        
+        Returns:
+            A tuple containing (l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss)
+        """
         l1_loss = L1ReconstructionLoss().to(device)
         gan_loss = (
             RaHingeGANLoss().to(device)
@@ -79,8 +102,17 @@ class BaseTrainer(ABC):
         )
         return l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss
 
-    def create_optimizers(self, G, D):
-        """Create and return the optimizers and schedulers"""
+    def create_optimizers(self, G: Module, D: Module) -> Tuple[optim.Optimizer, lr_scheduler.LRScheduler, 
+                                                              optim.Optimizer, lr_scheduler.LRScheduler]:
+        """Create and return the optimizers and schedulers.
+        
+        Args:
+            G: Generator model
+            D: Discriminator model
+            
+        Returns:
+            A tuple containing (optimizer_G, scheduler_G, optimizer_D, scheduler_D)
+        """
         milestones = [
             i * self.cfg.trainer.lr_milestone - 1
             for i in range(1, self.cfg.trainer.epochs // self.cfg.trainer.lr_milestone)
@@ -107,8 +139,8 @@ class BaseTrainer(ABC):
             scheduler_discriminator,
         )
 
-    def print_training_config(self):
-        """Print the training configuration"""
+    def print_training_config(self) -> None:
+        """Print the training configuration."""
         print(f"\t-Creating {self.model_name}")
         padding_mode = "replicate" if self.deterministic else "reflect"
         print(f"\t\t-{self.model_name} padding mode: {padding_mode}")
@@ -127,12 +159,15 @@ class BaseTrainer(ABC):
         if self.cfg.trainer.use_film:
             print(f"\t\t-{self.model_name} use FiLM")
 
-    def train(self):
-        """Main training loop"""
+    def setup_dataloaders(self) -> Tuple[DataLoaderX, DataLoaderX, int, int]:
+        """Set up and return the training and validation dataloaders.
+        
+        Returns:
+            A tuple containing (train_dataloader, val_dataloader, train_num_samples, val_num_samples)
+        """
         train_save_path = os.path.join(self.cfg.data.patches.root, "train.h5")
         val_save_path = os.path.join(self.cfg.data.patches.root, "val.h5")
-        print(f"Loading dataset: patches from {self.cfg.data.patches.root}")
-
+        
         # Create datasets if they don't exist
         exist = True
         for path in [train_save_path, val_save_path]:
@@ -191,6 +226,13 @@ class BaseTrainer(ABC):
             num_workers=7,
             pin_memory=True,
         )
+        
+        return train_dataloader, val_dataloader, train_num_samples, val_num_samples
+
+    def train(self) -> None:
+        """Main training loop."""
+        print(f"Loading dataset: patches from {self.cfg.data.patches.root}")
+        train_dataloader, val_dataloader, train_num_samples, val_num_samples = self.setup_dataloaders()
 
         # Create models and training components
         self.print_training_config()
@@ -365,15 +407,25 @@ class BaseTrainer(ABC):
 
     def _validate_and_save(
         self,
-        epoch,
-        G,
-        D,
-        val_dataloader,
-        val_num_samples,
-        root_save_path,
-        save_img_interval,
-    ):
-        """Validate the model and save checkpoints"""
+        epoch: int,
+        G: Module,
+        D: Module,
+        val_dataloader: DataLoaderX,
+        val_num_samples: int,
+        root_save_path: str,
+        save_img_interval: int,
+    ) -> None:
+        """Validate the model and save checkpoints.
+        
+        Args:
+            epoch: Current training epoch
+            G: Generator model
+            D: Discriminator model
+            val_dataloader: Validation data loader
+            val_num_samples: Number of validation samples
+            root_save_path: Base directory to save results
+            save_img_interval: Interval at which to save validation images
+        """
         current_save_path = create_folder(
             os.path.join(root_save_path, f"model_epoch{epoch + 1}")
         )
