@@ -11,7 +11,7 @@ from torch.optim import lr_scheduler
 from pht.models.afgsa.dataset import Dataset
 from pht.models.afgsa.discriminators import MultiScaleDiscriminator
 from pht.models.afgsa.gen_hdf5 import Hdf5Constructor
-from pht.models.afgsa.loss import (
+from pht.models.losses import (
     GANLoss,
     GradientPenaltyLoss,
     L1ReconstructionLoss,
@@ -33,6 +33,7 @@ from pht.models.afgsa.util import (
     tensor2img,
 )
 from pht.models.mamba.model import MambaDenoiserNet, PositionalEncoding2D
+from pht.models.base_trainer import BaseTrainer
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]
@@ -341,6 +342,28 @@ def train_SANet(
                     )
 
 
+class MambaTrainer(BaseTrainer):
+    def create_generator(self):
+        """Create and return the Mamba generator model"""
+        pos_encoder = PositionalEncoding2D(
+            self.cfg.model.base_ch,
+            self.cfg.data.patches.patch_size,
+            self.cfg.data.patches.patch_size,
+        ).to(device)
+
+        return MambaDenoiserNet(
+            self.cfg.model.in_ch,
+            self.cfg.model.aux_in_ch,
+            self.cfg.model.base_ch,
+            pos_encoder,
+            num_blocks=self.cfg.model.num_blocks,
+            d_state=self.cfg.model.d_state,
+            d_conv=self.cfg.model.d_conv,
+            expansion=self.cfg.model.expansion,
+            num_gcp=self.cfg.model.num_gcp,
+        ).to(device)
+
+
 def train(cfg: DictConfig):
     train_save_path = os.path.join(cfg.data.patches.root, "train.h5")
     val_save_path = os.path.join(cfg.data.patches.root, "val.h5")
@@ -427,7 +450,9 @@ def run(cfg: DictConfig):
 
     create_folder(cfg.paths.out_dir)
     create_folder(cfg.data.patches.root)
-    train(cfg)
+
+    trainer = MambaTrainer(cfg)
+    trainer.train()
 
 
 # expose for Hydra entrypoint

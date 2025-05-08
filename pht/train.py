@@ -2,22 +2,22 @@ import hydra
 from omegaconf import DictConfig
 import torch
 
+from pht.models.afgsa.train import AFGSATrainer
+from pht.models.mamba.train import MambaTrainer
+
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(cfg.seed)
 
     if cfg.model.name == "afgsa":
-        from pht.models.afgsa import train as afgsa_train_mod
-
-        afgsa_train_mod.run(cfg)
+        trainer = AFGSATrainer(cfg)
     elif cfg.model.name == "mamba":
-        from pht.models.mamba import train as mamba_train_mod
-
-        mamba_train_mod.run(cfg)
-
+        trainer = MambaTrainer(cfg)
     else:
         raise ValueError(f"Unsupported model: {cfg.model.name}")
+
+    trainer.train()
 
 
 if __name__ == "__main__":

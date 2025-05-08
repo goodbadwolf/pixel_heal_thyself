@@ -2,7 +2,7 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from pht.models.afgsa.prefetch_dataloader import *
 from pht.models.afgsa.model import *
-from pht.models.afgsa.loss import *
+from pht.models.losses import *
 from pht.models.afgsa.gen_hdf5 import *
 from pht.models.afgsa.dataset import *
 from pht.models.afgsa.util import *
@@ -13,6 +13,7 @@ import math
 import numpy as np
 import lpips
 from omegaconf import DictConfig
+from pht.models.base_trainer import BaseTrainer
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]
@@ -235,6 +236,25 @@ def train_SANet(cfg, train_dataloader, train_num_samples, val_dataloader, val_nu
                             (epoch + 1, avg_mrse, avg_psnr, 1-avg_ssim))
 
 
+class AFGSATrainer(BaseTrainer):
+    def create_generator(self):
+        """Create and return the AFGSA generator model"""
+        padding_mode = "replicate" if self.deterministic else "reflect"
+        return AFGSANet(
+            self.cfg.model.in_ch,
+            self.cfg.model.aux_in_ch,
+            self.cfg.model.base_ch,
+            num_sa=self.cfg.model.num_sa,
+            block_size=self.cfg.model.block_size,
+            halo_size=self.cfg.model.halo_size,
+            num_heads=self.cfg.model.num_heads,
+            num_gcp=self.cfg.trainer.num_gradient_checkpoint,
+            padding_mode=padding_mode,
+            curve_order=self.cfg.trainer.curve_order,
+            use_film=self.cfg.trainer.use_film
+        ).to(device)
+
+
 def train(cfg: DictConfig):
     train_save_path = os.path.join(cfg.data.patches.root, "train.h5")
     val_save_path = os.path.join(cfg.data.patches.root, "val.h5")
@@ -307,7 +327,9 @@ def run(cfg: DictConfig):
 
     create_folder(cfg.paths.out_dir)
     create_folder(cfg.data.patches.root)
-    train(cfg)
+    
+    trainer = AFGSATrainer(cfg)
+    trainer.train()
 
 # expose for Hydra entrypoint
 __all__ = ["run"]
