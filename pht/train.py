@@ -1,5 +1,6 @@
 import hydra
 from omegaconf import DictConfig
+from pht.models.afgsa.model import CurveOrder
 import torch
 
 from pht.models.afgsa.train import AFGSATrainer
@@ -9,6 +10,8 @@ from pht.models.mamba.train import MambaTrainer
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig) -> None:
     torch.manual_seed(cfg.seed)
+
+    cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
 
     if cfg.model.name == "afgsa":
         trainer = AFGSATrainer(cfg)

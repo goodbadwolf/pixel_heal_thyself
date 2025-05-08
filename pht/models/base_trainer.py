@@ -139,6 +139,8 @@ class BaseTrainer(ABC):
             if not os.path.exists(path):
                 exist = False
         if not exist:
+            print(f"Creating dataset: patches in {self.cfg.data.patches.root}")
+            os.makedirs(self.cfg.data.patches.root, exist_ok=True)
             constructor = Hdf5Constructor(
                 self.cfg.data.in_dir,
                 self.cfg.data.patches.root,
@@ -223,7 +225,7 @@ class BaseTrainer(ABC):
         accumulated_discriminator_loss = 0
         total_iterations = math.ceil(train_num_samples / self.cfg.trainer.batch_size)
         save_img_interval = val_num_samples // self.cfg.trainer.num_saved_imgs
-        root_save_path = os.path.join(self.cfg.paths.out_dir, "checkpoints")
+        root_save_path = self.cfg.paths.out_dir
 
         print("\t-Start training")
         end = None
