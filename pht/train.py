@@ -1,7 +1,7 @@
 import hydra
 from omegaconf import DictConfig
 from pht.models.afgsa.model import CurveOrder
-import torch
+from pht.models.base_trainer import setup_deterministic_training
 
 from pht.models.afgsa.train import AFGSATrainer
 from pht.models.mamba.train import MambaTrainer
@@ -9,8 +9,10 @@ from pht.models.mamba.train import MambaTrainer
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
 def main(cfg: DictConfig) -> None:
-    torch.manual_seed(cfg.seed)
+    # Global seed initialization (affects random operations before model creation)
+    setup_deterministic_training(cfg.seed)
 
+    # Convert curve order string to enum
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
 
     if cfg.model.name == "afgsa":

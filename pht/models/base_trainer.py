@@ -1,10 +1,12 @@
 import math
 import os
+import random
 import time
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
 
 import lpips
+import numpy as np
 import torch
 import torch.optim as optim
 from omegaconf import DictConfig
@@ -32,13 +34,41 @@ from pht.models.afgsa.preprocessing import (
 from pht.models.afgsa.util import (
     create_folder,
     save_img_group,
-    set_global_seed,
     tensor2img,
 )
 
 # Global constants
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]  # NHWC → NCHW
+
+
+def set_global_seed(seed: int) -> None:
+    """Set random seeds for all libraries to ensure reproducibility.
+    
+    Args:
+        seed: The seed value to use
+    """
+    random.seed(seed)
+    np.random.seed(seed)
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    # For new‑style CUDA algos
+    torch.use_deterministic_algorithms(True, warn_only=True)
+
+
+def setup_deterministic_training(seed: int) -> None:
+    """Set up fully deterministic training.
+    
+    This function sets random seeds and enables deterministic algorithms
+    for all libraries used in the training pipeline.
+    
+    Args:
+        seed: The seed value to use
+    """
+    set_global_seed(seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 class BaseTrainer(ABC):
@@ -54,6 +84,10 @@ class BaseTrainer(ABC):
         self.deterministic = cfg.trainer.get("deterministic", False)
         # Extract model name from the trainer class name (e.g., AFGSATrainer -> AFGSA)
         self.model_name = self.__class__.__name__.replace("Trainer", "")
+        
+        # Set up deterministic training if requested
+        if self.deterministic:
+            setup_deterministic_training(self.cfg.seed)
 
     @abstractmethod
     def create_generator(self) -> Module:
@@ -187,12 +221,6 @@ class BaseTrainer(ABC):
             )
             constructor.construct_hdf5()
 
-        # Set up deterministic training if needed
-        if self.deterministic:
-            torch.manual_seed(self.cfg.seed)
-            torch.cuda.manual_seed_all(self.cfg.seed)
-            torch.backends.cudnn.deterministic = False
-
         # Create dataloaders
         train_dataset = Dataset(train_save_path)
         train_num_samples = len(train_dataset)
@@ -219,13 +247,27 @@ class BaseTrainer(ABC):
 
         val_dataset = Dataset(val_save_path)
         val_num_samples = len(val_dataset)
-        val_dataloader = DataLoaderX(
-            val_dataset,
-            batch_size=self.cfg.trainer.batch_size,
-            shuffle=False,
-            num_workers=7,
-            pin_memory=True,
-        )
+        
+        # For validation, we want deterministic behavior regardless of training mode
+        if self.deterministic:
+            g = torch.Generator()
+            g.manual_seed(self.cfg.seed)
+            val_dataloader = DataLoaderX(
+                val_dataset,
+                batch_size=self.cfg.trainer.batch_size,
+                shuffle=False,
+                generator=g,
+                num_workers=7,
+                pin_memory=True,
+            )
+        else:
+            val_dataloader = DataLoaderX(
+                val_dataset,
+                batch_size=self.cfg.trainer.batch_size,
+                shuffle=False,
+                num_workers=7,
+                pin_memory=True,
+            )
         
         return train_dataloader, val_dataloader, train_num_samples, val_num_samples
 

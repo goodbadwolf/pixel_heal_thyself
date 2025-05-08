@@ -46,10 +46,6 @@ def run(cfg: DictConfig) -> None:
     # Convert curve order string to enum
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
 
-    # Set up deterministic training if requested
-    if cfg.trainer.get("deterministic", False):
-        set_global_seed(cfg.seed)
-
     # Create output directories
     create_folder(cfg.paths.out_dir)
     create_folder(cfg.data.patches.root)
