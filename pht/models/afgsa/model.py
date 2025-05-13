@@ -84,9 +84,9 @@ def sequential(*args):
 
 
 # conv norm activation
-def conv_block(in_ch, out_ch, kernel_size, stride=1, dilation=1, padding=0, padding_mode='zeros', norm_type=None,
+def conv_block(input_channels, out_ch, kernel_size, stride=1, dilation=1, padding=0, padding_mode='zeros', norm_type=None,
                act_type='relu', groups=1, inplace=True):
-    c = nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=stride, dilation=dilation, padding=padding,
+    c = nn.Conv2d(input_channels, out_ch, kernel_size=kernel_size, stride=stride, dilation=dilation, padding=padding,
                   padding_mode=padding_mode, groups=groups)
     n = norm(norm_type, out_ch) if norm_type else None
     a = act(act_type, inplace) if act_type else None
@@ -246,7 +246,7 @@ class AFGSA(nn.Module):
         self.use_film = use_film
         if use_film:
             self.alpha = nn.Parameter(torch.zeros(1))
-            self.film = FiLM(in_ch=ch, cond_ch=ch, hidden=128, use_spatial=True)
+            self.film = FiLM(input_channels=ch, cond_ch=ch, hidden=128, use_spatial=True)
         else:
             self.conv_map = conv_block(ch*2, ch, kernel_size=1, act_type='relu')
         self.q_conv = nn.Conv2d(ch, ch, kernel_size=1, bias=bias)
@@ -325,19 +325,19 @@ class TransformerBlock(nn.Module):
 
 
 class AFGSANet(nn.Module):
-    def __init__(self, in_ch, aux_in_ch, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2,
+    def __init__(self, input_channels, aux_input_channels, base_ch, num_sa=5, block_size=8, halo_size=3, num_heads=4, num_gcp=2,
                  padding_mode='reflect', curve_order=CurveOrder.RASTER, use_film=False):
         super(AFGSANet, self).__init__()
         assert num_gcp <= num_sa
 
-        self.conv1 = conv_block(in_ch, 256, kernel_size=1, act_type='relu')
-        self.conv3 = conv_block(in_ch, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
-        self.conv5 = conv_block(in_ch, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='relu')
+        self.conv1 = conv_block(input_channels, 256, kernel_size=1, act_type='relu')
+        self.conv3 = conv_block(input_channels, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='relu')
+        self.conv5 = conv_block(input_channels, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='relu')
         self.conv_map = conv_block(256*3, base_ch, kernel_size=1, act_type='relu')
 
-        self.conv_a1 = conv_block(aux_in_ch, 256, kernel_size=1, act_type='relu')
-        self.conv_a3 = conv_block(aux_in_ch, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='leakyrelu')
-        self.conv_a5 = conv_block(aux_in_ch, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='leakyrelu')
+        self.conv_a1 = conv_block(aux_input_channels, 256, kernel_size=1, act_type='relu')
+        self.conv_a3 = conv_block(aux_input_channels, 256, kernel_size=3, padding=1, padding_mode=padding_mode, act_type='leakyrelu')
+        self.conv_a5 = conv_block(aux_input_channels, 256, kernel_size=5, padding=2, padding_mode=padding_mode, act_type='leakyrelu')
         self.conv_aenc1 = conv_block(256*3, base_ch, kernel_size=1, act_type='leakyrelu')
         self.conv_aenc2 = conv_block(base_ch, base_ch, kernel_size=1, act_type='leakyrelu')
 

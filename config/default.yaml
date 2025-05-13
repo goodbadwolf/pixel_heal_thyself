@@ -3,19 +3,19 @@ defaults:
   - model: afgsa
   - data: default
   - trainer: default
-  - inference: default
   - override hydra/callbacks: custom_run_dirs
 
+# Global settings
 seed: 990819
-
 data_ratio: 0.95
-
 run_num: -1
 
+# File paths
 paths:
   root: ${hydra:runtime.cwd}
-  out_dir: ${hydra:run.dir}
+  output_dir: ${hydra:run.dir}
 
+# Hydra configuration
 hydra:
   run:
     dir: runs/${now:%Y-%m-%d}/${now:%H-%M-%S}

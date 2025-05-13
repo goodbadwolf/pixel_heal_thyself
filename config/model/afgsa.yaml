@@ -1,9 +1,14 @@
+defaults:
+  - common
+
 name: afgsa
-in_ch: 3
-aux_in_ch: 7
-base_ch: 256
-num_sa: 5
-block_size: 8
-halo_size: 3
-num_heads: 4
-use_film: false
+
+afgsa:
+  self_attention:
+    num_layers: 5
+    block_size: 8 # Size of the processing blocks for local attention
+    halo_size: 3 # Size of the halo region for context
+    num_heads: 4 # Number of attention heads in each self-attention layer
+  curve_order: raster
+  use_multiscale_discriminator: true
+  use_film: true

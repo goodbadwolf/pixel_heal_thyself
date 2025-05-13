@@ -3,7 +3,7 @@ import os
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union, Any
 
 import lpips
 import numpy as np
@@ -12,6 +12,8 @@ import torch.optim as optim
 from omegaconf import DictConfig
 from torch.optim import lr_scheduler
 from torch.nn import Module
+
+from pht.config.base import Config
 
 from pht.models.afgsa.dataset import Dataset
 from pht.models.afgsa.discriminators import MultiScaleDiscriminator
@@ -44,7 +46,7 @@ permutation = [0, 3, 1, 2]  # NHWC → NCHW
 
 def set_global_seed(seed: int) -> None:
     """Set random seeds for all libraries to ensure reproducibility.
-    
+
     Args:
         seed: The seed value to use
     """
@@ -59,10 +61,10 @@ def set_global_seed(seed: int) -> None:
 
 def setup_deterministic_training(seed: int) -> None:
     """Set up fully deterministic training.
-    
+
     This function sets random seeds and enables deterministic algorithms
     for all libraries used in the training pipeline.
-    
+
     Args:
         seed: The seed value to use
     """
@@ -73,18 +75,18 @@ def setup_deterministic_training(seed: int) -> None:
 
 class BaseTrainer(ABC):
     """Base class for all model trainers in the PHT project."""
-    
-    def __init__(self, cfg: DictConfig):
+
+    def __init__(self, cfg: Config):
         """Initialize the trainer with configuration.
-        
+
         Args:
-            cfg: Hydra configuration object
+            cfg: Typed configuration object
         """
         self.cfg = cfg
-        self.deterministic = cfg.trainer.get("deterministic", False)
+        self.deterministic = cfg.trainer.deterministic
         # Extract model name from the trainer class name (e.g., AFGSATrainer -> AFGSA)
         self.model_name = self.__class__.__name__.replace("Trainer", "")
-        
+
         # Set up deterministic training if requested
         if self.deterministic:
             setup_deterministic_training(self.cfg.seed)
@@ -92,7 +94,7 @@ class BaseTrainer(ABC):
     @abstractmethod
     def create_generator(self) -> Module:
         """Create and return the generator model.
-        
+
         Returns:
             A PyTorch model that serves as the generator
         """
@@ -100,50 +102,59 @@ class BaseTrainer(ABC):
 
     def create_discriminator(self) -> Module:
         """Create and return the discriminator model.
-        
+
         Returns:
             A PyTorch model that serves as the discriminator
         """
-        if self.cfg.trainer.use_multiscale_discriminator:
+        if self.cfg.model.discriminator.use_multiscale_discriminator:
             return MultiScaleDiscriminator(
-                in_nc=self.cfg.model.in_ch, patch_size=self.cfg.data.patches.patch_size
+                in_nc=self.cfg.model.input_channels,
+                patch_size=self.cfg.data.patches.patch_size,
             ).to(device)
         else:
             return DiscriminatorVGG(3, 64, self.cfg.data.patches.patch_size).to(device)
 
-    def create_losses(self) -> Tuple[Module, Module, Module, Optional[Module], Optional[Module]]:
+    def create_losses(
+        self,
+    ) -> Tuple[Module, Module, Module, Optional[Module], Optional[Module]]:
         """Create and return the loss functions.
-        
+
         Returns:
             A tuple containing (l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss)
         """
         l1_loss = L1ReconstructionLoss().to(device)
         gan_loss = (
             RaHingeGANLoss().to(device)
-            if self.cfg.trainer.use_multiscale_discriminator
+            if self.cfg.model.discriminator.use_multiscale_discriminator
             else GANLoss("wgan").to(device)
         )
         gp_loss = GradientPenaltyLoss(device).to(device)
         lpips_loss = (
             lpips.LPIPS(net="vgg").to(device)
-            if self.cfg.trainer.use_lpips_loss
+            if self.cfg.model.losses.use_lpips_loss
             else None
         )
         ssim_loss = (
             SSIMLoss(window_size=11).to(device)
-            if self.cfg.trainer.use_ssim_loss
+            if self.cfg.model.losses.use_ssim_loss
             else None
         )
         return l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss
 
-    def create_optimizers(self, G: Module, D: Module) -> Tuple[optim.Optimizer, lr_scheduler.LRScheduler, 
-                                                              optim.Optimizer, lr_scheduler.LRScheduler]:
+    def create_optimizers(
+        self, G: Module, D: Module
+    ) -> Tuple[
+        optim.Optimizer,
+        lr_scheduler.LRScheduler,
+        optim.Optimizer,
+        lr_scheduler.LRScheduler,
+    ]:
         """Create and return the optimizers and schedulers.
-        
+
         Args:
             G: Generator model
             D: Discriminator model
-            
+
         Returns:
             A tuple containing (optimizer_G, scheduler_G, optimizer_D, scheduler_D)
         """
@@ -178,46 +189,48 @@ class BaseTrainer(ABC):
         print(f"\t-Creating {self.model_name}")
         padding_mode = "replicate" if self.deterministic else "reflect"
         print(f"\t\t-{self.model_name} padding mode: {padding_mode}")
-        print(f"\t\t-{self.model_name} curve order: {self.cfg.trainer.curve_order}")
-        print(f"\t\t-{self.model_name} L1 lossW: {self.cfg.trainer.l1_loss_w}")
-        print(f"\t\t-{self.model_name} GAN lossW: {self.cfg.trainer.gan_loss_w}")
-        print(f"\t\t-{self.model_name} GP lossW: {self.cfg.trainer.gp_loss_w}")
-        if self.cfg.trainer.use_lpips_loss:
+        print(f"\t\t-{self.model_name} curve order: {self.cfg.model.curve_order}")
+        print(f"\t\t-{self.model_name} L1 lossW: {self.cfg.model.losses.l1_loss_w}")
+        print(f"\t\t-{self.model_name} GAN lossW: {self.cfg.model.losses.gan_loss_w}")
+        print(f"\t\t-{self.model_name} GP lossW: {self.cfg.model.losses.gp_loss_w}")
+        if self.cfg.model.losses.use_lpips_loss:
             print(
-                f"\t\t-{self.model_name} LPIPS lossW: {self.cfg.trainer.lpips_loss_w}"
+                f"\t\t-{self.model_name} LPIPS lossW: {self.cfg.model.losses.lpips_loss_w}"
             )
-        if self.cfg.trainer.use_ssim_loss:
-            print(f"\t\t-{self.model_name} SSIM lossW: {self.cfg.trainer.ssim_loss_w}")
-        if self.cfg.trainer.use_multiscale_discriminator:
+        if self.cfg.model.losses.use_ssim_loss:
+            print(
+                f"\t\t-{self.model_name} SSIM lossW: {self.cfg.model.losses.ssim_loss_w}"
+            )
+        if self.cfg.model.discriminator.use_multiscale_discriminator:
             print(f"\t\t-{self.model_name} multiscale discriminator")
-        if self.cfg.trainer.use_film:
+        if self.cfg.model.discriminator.use_film:
             print(f"\t\t-{self.model_name} use FiLM")
 
     def setup_dataloaders(self) -> Tuple[DataLoaderX, DataLoaderX, int, int]:
         """Set up and return the training and validation dataloaders.
-        
+
         Returns:
             A tuple containing (train_dataloader, val_dataloader, train_num_samples, val_num_samples)
         """
-        train_save_path = os.path.join(self.cfg.data.patches.root, "train.h5")
-        val_save_path = os.path.join(self.cfg.data.patches.root, "val.h5")
-        
+        train_save_path = os.path.join(self.cfg.data.patches.dir, "train.h5")
+        val_save_path = os.path.join(self.cfg.data.patches.dir, "val.h5")
+
         # Create datasets if they don't exist
         exist = True
         for path in [train_save_path, val_save_path]:
             if not os.path.exists(path):
                 exist = False
         if not exist:
-            print(f"Creating dataset: patches in {self.cfg.data.patches.root}")
-            os.makedirs(self.cfg.data.patches.root, exist_ok=True)
+            print(f"Creating dataset: patches in {self.cfg.data.patches.dir}")
+            os.makedirs(self.cfg.data.patches.dir, exist_ok=True)
             constructor = Hdf5Constructor(
-                self.cfg.data.in_dir,
-                self.cfg.data.patches.root,
+                self.cfg.data.images.dir,
+                self.cfg.data.patches.dir,
                 self.cfg.data.patches.patch_size,
                 self.cfg.data.patches.num_patches,
                 self.cfg.seed,
                 self.cfg.data_ratio,
-                resize=self.cfg.data.resize,
+                resize=self.cfg.data.images.scale,
             )
             constructor.construct_hdf5()
 
@@ -247,7 +260,7 @@ class BaseTrainer(ABC):
 
         val_dataset = Dataset(val_save_path)
         val_num_samples = len(val_dataset)
-        
+
         # For validation, we want deterministic behavior regardless of training mode
         if self.deterministic:
             g = torch.Generator()
@@ -268,29 +281,28 @@ class BaseTrainer(ABC):
                 num_workers=7,
                 pin_memory=True,
             )
-        
+
         return train_dataloader, val_dataloader, train_num_samples, val_num_samples
 
     def train(self) -> None:
         """Main training loop."""
-        print(f"Loading dataset: patches from {self.cfg.data.patches.root}")
-        train_dataloader, val_dataloader, train_num_samples, val_num_samples = self.setup_dataloaders()
+        print(f"Loading dataset: patches from {self.cfg.data.patches.dir}")
+        train_dataloader, val_dataloader, train_num_samples, val_num_samples = (
+            self.setup_dataloaders()
+        )
 
         # Create models and training components
         self.print_training_config()
         G = self.create_generator()
         D = self.create_discriminator()
 
-        if self.cfg.trainer.get("load_model", False):
+        # Load model if specified
+        if self.cfg.trainer.load_model:
             G.load_state_dict(
-                torch.load(
-                    os.path.join(self.cfg.trainer.get("model_path", None), "G.pt")
-                )
+                torch.load(os.path.join(self.cfg.trainer.model_path, "G.pt"))
             )
             D.load_state_dict(
-                torch.load(
-                    os.path.join(self.cfg.trainer.get("model_path", None), "D.pt")
-                )
+                torch.load(os.path.join(self.cfg.trainer.model_path, "D.pt"))
             )
 
         print_model_structure(G)
@@ -309,7 +321,7 @@ class BaseTrainer(ABC):
         accumulated_discriminator_loss = 0
         total_iterations = math.ceil(train_num_samples / self.cfg.trainer.batch_size)
         save_img_interval = val_num_samples // self.cfg.trainer.num_saved_imgs
-        root_save_path = self.cfg.paths.out_dir
+        root_save_path = self.cfg.paths.output_dir
 
         print("\t-Start training")
         end = None
@@ -341,7 +353,7 @@ class BaseTrainer(ABC):
                 optimizer_discriminator.zero_grad()
                 pred_d_fake = D(output.detach())
                 pred_d_real = D(gt)
-                if self.cfg.trainer.use_multiscale_discriminator:
+                if self.cfg.model.discriminator.use_multiscale_discriminator:
                     discriminator_loss = gan_loss(pred_d_real, pred_d_fake)
                 else:
                     try:
@@ -352,7 +364,7 @@ class BaseTrainer(ABC):
                         break
                     discriminator_loss = (
                         loss_d_fake + loss_d_real
-                    ) / 2 + self.cfg.trainer.gp_loss_w * loss_gp
+                    ) / 2 + self.cfg.model.losses.gp_loss_w * loss_gp
                 discriminator_loss.backward()
                 optimizer_discriminator.step()
                 accumulated_discriminator_loss += (
@@ -363,7 +375,7 @@ class BaseTrainer(ABC):
                 optimizer_generator.zero_grad()
                 pred_g_fake = D(output)
                 try:
-                    if self.cfg.trainer.use_multiscale_discriminator:
+                    if self.cfg.model.discriminator.use_multiscale_discriminator:
                         with torch.no_grad():
                             pred_d_real_ng = D(gt)
                         loss_g_fake = gan_loss(pred_g_fake, pred_d_real_ng)
@@ -373,8 +385,8 @@ class BaseTrainer(ABC):
                 except:  # noqa: E722
                     break
                 generator_loss = (
-                    self.cfg.trainer.gan_loss_w * loss_g_fake
-                    + self.cfg.trainer.l1_loss_w * loss_l1
+                    self.cfg.model.losses.gan_loss_w * loss_g_fake
+                    + self.cfg.model.losses.l1_loss_w * loss_l1
                 )
 
                 def assert_nchw(x, name):
@@ -383,7 +395,7 @@ class BaseTrainer(ABC):
                 assert_nchw(output, "output")
                 assert_nchw(gt, "gt")
 
-                if self.cfg.trainer.use_lpips_loss:
+                if self.cfg.model.losses.use_lpips_loss:
 
                     def to_lpips_range(x_log):
                         x_lin = torch.exp(x_log) - 1.0
@@ -393,10 +405,10 @@ class BaseTrainer(ABC):
                     lpips_output = to_lpips_range(output)
                     lpips_gt = to_lpips_range(gt)
                     loss_lpips = lpips_loss(lpips_output, lpips_gt).mean()
-                    generator_loss += self.cfg.trainer.lpips_loss_w * loss_lpips
-                if self.cfg.trainer.use_ssim_loss:
+                    generator_loss += self.cfg.model.losses.lpips_loss_w * loss_lpips
+                if self.cfg.model.losses.use_ssim_loss:
                     loss_ssim = ssim_loss(output, gt)
-                    generator_loss += self.cfg.trainer.ssim_loss_w * loss_ssim
+                    generator_loss += self.cfg.model.losses.ssim_loss_w * loss_ssim
                 generator_loss.backward()
                 optimizer_generator.step()
                 accumulated_generator_loss += (
@@ -458,7 +470,7 @@ class BaseTrainer(ABC):
         save_img_interval: int,
     ) -> None:
         """Validate the model and save checkpoints.
-        
+
         Args:
             epoch: Current training epoch
             G: Generator model

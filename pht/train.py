@@ -1,20 +1,25 @@
 import hydra
 from omegaconf import DictConfig
+
+from pht.config.registry import ConfigRegistry
 from pht.models.afgsa.model import CurveOrder
 from pht.models.base_trainer import setup_deterministic_training
-
 from pht.models.afgsa.train import AFGSATrainer
 from pht.models.mamba.train import MambaTrainer
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
-def main(cfg: DictConfig) -> None:
+def main(hydra_cfg: DictConfig) -> None:
+    # Convert Hydra DictConfig to typed Config
+    cfg = ConfigRegistry.create_config(hydra_cfg)
+
     # Global seed initialization (affects random operations before model creation)
     setup_deterministic_training(cfg.seed)
 
     # Convert curve order string to enum
-    cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
+    cfg.model.curve_order = CurveOrder(cfg.model.curve_order)
 
+    # Create trainer based on model type
     if cfg.model.name == "afgsa":
         trainer = AFGSATrainer(cfg)
     elif cfg.model.name == "mamba":
