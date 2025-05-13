@@ -179,7 +179,7 @@ cython_debug/
 
 # Repomix Runner VS Code Extension artefacts
 .repomix
-repomix-output.txt
+repomix-output.txt*
 
 # Datasets that are not to be tracked using git
 data/

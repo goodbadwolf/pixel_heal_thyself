@@ -6,7 +6,7 @@ from mamba_ssm import Mamba, Mamba2
 
 
 def mm_conv_block(
-    in_ch,
+    input_channels,
     out_ch,
     kernel_size,
     stride=1,
@@ -19,7 +19,7 @@ def mm_conv_block(
     inplace=True,
 ):
     c = nn.Conv2d(
-        in_ch,
+        input_channels,
         out_ch,
         kernel_size=kernel_size,
         stride=stride,
@@ -80,8 +80,8 @@ class MambaBlock(nn.Module):
 class MambaDenoiserNet(nn.Module):
     def __init__(
         self,
-        in_ch,
-        aux_in_ch,
+        input_channels,
+        aux_input_channels,
         base_ch,
         pos_encoder,
         num_blocks=5,
@@ -93,9 +93,9 @@ class MambaDenoiserNet(nn.Module):
         super(MambaDenoiserNet, self).__init__()
         assert num_gcp <= num_blocks
 
-        self.conv1 = mm_conv_block(in_ch, 256, kernel_size=1, act_type="relu")
+        self.conv1 = mm_conv_block(input_channels, 256, kernel_size=1, act_type="relu")
         self.conv3 = mm_conv_block(
-            in_ch,
+            input_channels,
             256,
             kernel_size=3,
             padding=1,
@@ -103,7 +103,7 @@ class MambaDenoiserNet(nn.Module):
             act_type="relu",
         )
         self.conv5 = mm_conv_block(
-            in_ch,
+            input_channels,
             256,
             kernel_size=5,
             padding=2,
@@ -112,9 +112,11 @@ class MambaDenoiserNet(nn.Module):
         )
         self.conv_map = mm_conv_block(256 * 3, base_ch, kernel_size=1, act_type="relu")
 
-        self.conv_a1 = mm_conv_block(aux_in_ch, 256, kernel_size=1, act_type="relu")
+        self.conv_a1 = mm_conv_block(
+            aux_input_channels, 256, kernel_size=1, act_type="relu"
+        )
         self.conv_a3 = mm_conv_block(
-            aux_in_ch,
+            aux_input_channels,
             256,
             kernel_size=3,
             padding=1,
@@ -122,7 +124,7 @@ class MambaDenoiserNet(nn.Module):
             act_type="leakyrelu",
         )
         self.conv_a5 = mm_conv_block(
-            aux_in_ch,
+            aux_input_channels,
             256,
             kernel_size=5,
             padding=2,
@@ -199,12 +201,14 @@ class MambaDenoiserNet(nn.Module):
 
 
 class PatchGANDiscriminator(nn.Module):
-    def __init__(self, in_channels=3, base_channels=64):
+    def __init__(self, input_channelsannels=3, base_channels=64):
         super(PatchGANDiscriminator, self).__init__()
 
         self.net = nn.Sequential(
             # Input: [B, 3, H, W]
-            nn.Conv2d(in_channels, base_channels, kernel_size=4, stride=2, padding=1),
+            nn.Conv2d(
+                input_channelsannels, base_channels, kernel_size=4, stride=2, padding=1
+            ),
             nn.LeakyReLU(0.2, inplace=True),
             nn.Conv2d(
                 base_channels, base_channels * 2, kernel_size=4, stride=2, padding=1

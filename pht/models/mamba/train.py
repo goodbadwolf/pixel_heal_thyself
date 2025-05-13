@@ -2,6 +2,7 @@ import torch
 from torch.nn import Module
 from omegaconf import DictConfig
 
+from pht.config.base import Config, MambaModelConfig
 from pht.models.afgsa.model import CurveOrder
 from pht.models.afgsa.util import create_folder, set_global_seed
 from pht.models.mamba.model import MambaDenoiserNet, PositionalEncoding2D
@@ -10,36 +11,40 @@ from pht.models.base_trainer import BaseTrainer, device
 
 class MambaTrainer(BaseTrainer):
     """Trainer class for Mamba model."""
-    
+
     def create_generator(self) -> Module:
         """Create and return the Mamba generator model.
-        
+
         Returns:
             MambaDenoiserNet model instance
         """
+        # We know the model is MambaModelConfig
+        model_cfg = self.cfg.model
+        assert isinstance(model_cfg, MambaModelConfig)
+
         pos_encoder = PositionalEncoding2D(
-            self.cfg.model.base_ch,
+            model_cfg.feature_map_channels,
             self.cfg.data.patches.patch_size,
             self.cfg.data.patches.patch_size,
         ).to(device)
 
         return MambaDenoiserNet(
-            self.cfg.model.in_ch,
-            self.cfg.model.aux_in_ch,
-            self.cfg.model.base_ch,
+            model_cfg.input_channels,
+            model_cfg.aux_input_channels,
+            model_cfg.feature_map_channels,
             pos_encoder,
-            num_blocks=self.cfg.model.num_blocks,
-            d_state=self.cfg.model.d_state,
-            d_conv=self.cfg.model.d_conv,
-            expansion=self.cfg.model.expansion,
-            num_gcp=self.cfg.model.num_gcp,
+            num_blocks=model_cfg.num_layers,
+            d_state=model_cfg.d_state,
+            d_conv=model_cfg.d_conv,
+            expansion=model_cfg.expansion,
+            num_gcp=model_cfg.num_gcp,
         ).to(device)
 
 
 def run(cfg: DictConfig) -> None:
     """
     Entry point for Mamba training from Hydra.
-    
+
     Args:
         cfg: Hydra configuration object
     """
@@ -47,9 +52,9 @@ def run(cfg: DictConfig) -> None:
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
 
     # Create output directories
-    create_folder(cfg.paths.out_dir)
-    create_folder(cfg.data.patches.root)
-    
+    create_folder(cfg.paths.output_dir)
+    create_folder(cfg.data.patches.dir)
+
     # Create and run trainer
     trainer = MambaTrainer(cfg)
     trainer.train()

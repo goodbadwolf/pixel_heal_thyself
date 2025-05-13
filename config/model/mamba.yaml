@@ -1,9 +1,11 @@
+defaults:
+  - common
+
 name: mamba
-in_ch: 3
-aux_in_ch: 7
-base_ch: 256
-num_blocks: 5
-d_state: 64
-d_conv: 4
-expansion: 4
-num_gcp: 0
+
+mamba:
+  num_layers: 5
+  d_state: 64 # Dimension of the state space in Mamba layers
+  d_conv: 4 # Dimension of the convolution kernel
+  expansion: 4 # Channel expansion factor in each layer
+  num_gcp: 0 # Number of gradient checkpoints

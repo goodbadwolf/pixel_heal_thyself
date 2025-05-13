@@ -61,5 +61,5 @@ class CustomRunDirs:
             config.hydra.sweep.subdir = output_dir
         else:
             config.hydra.run.dir = output_dir
-        config.paths.out_dir = output_dir
+        config.paths.output_dir = output_dir
         print(f"Hydra run dir set to: {output_dir}")

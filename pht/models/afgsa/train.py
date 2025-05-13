@@ -2,6 +2,8 @@ import torch
 from torch.nn import Module
 from omegaconf import DictConfig
 
+from pht.config.base import Config, AFGSAModelConfig
+from pht.config.registry import ConfigRegistry
 from pht.models.afgsa.model import AFGSANet, CurveOrder
 from pht.models.afgsa.util import create_folder, set_global_seed
 from pht.models.base_trainer import BaseTrainer, device
@@ -17,18 +19,23 @@ class AFGSATrainer(BaseTrainer):
             AFGSANet model instance
         """
         padding_mode = "replicate" if self.deterministic else "reflect"
+        
+        # We know the model is AFGSAModelConfig
+        model_cfg = self.cfg.model
+        assert isinstance(model_cfg, AFGSAModelConfig)
+        
         return AFGSANet(
-            self.cfg.model.in_ch,
-            self.cfg.model.aux_in_ch,
-            self.cfg.model.base_ch,
-            num_sa=self.cfg.model.num_sa,
-            block_size=self.cfg.model.block_size,
-            halo_size=self.cfg.model.halo_size,
-            num_heads=self.cfg.model.num_heads,
+            model_cfg.input_channels,
+            model_cfg.aux_input_channels,
+            model_cfg.feature_map_channels,
+            num_sa=model_cfg.self_attention.num_layers,
+            block_size=model_cfg.self_attention.block_size,
+            halo_size=model_cfg.self_attention.halo_size,
+            num_heads=model_cfg.self_attention.num_heads,
             num_gcp=self.cfg.trainer.num_gradient_checkpoint,
             padding_mode=padding_mode,
             curve_order=self.cfg.trainer.curve_order,
-            use_film=self.cfg.trainer.use_film
+            use_film=model_cfg.use_film
         ).to(device)
 
 
@@ -43,8 +50,8 @@ def run(cfg: DictConfig) -> None:
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
 
     # Create output directories
-    create_folder(cfg.paths.out_dir)
-    create_folder(cfg.data.patches.root)
+    create_folder(cfg.paths.output_dir)
+    create_folder(cfg.data.patches.dir)
     
     # Create and run trainer
     trainer = AFGSATrainer(cfg)

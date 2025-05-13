@@ -1,6 +1,20 @@
-in_dir: ${paths.root}/data/images
-resize: 1.0
+# Image settings
+images:
+  dir: ${paths.root}/data/images
+
+  # Scale factor for resizing the images before generating patches.
+  # It has been observed that when using small patch sizes, the model
+  # performance is better when the images are resized. For a patch
+  # size of 64, a scale factor of 0.5 is recommended and for a patch
+  # size of 32, a scale factor of 0.25 is recommended.
+  scale: 1.0
+
+# Patch settings
 patches:
+  dir: ${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}
+
+  # Square patch size in pixels
   patch_size: 128
+
+  # Number of patches to generate per image
   num_patches: 400
-  root: ${data.in_dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.resize}

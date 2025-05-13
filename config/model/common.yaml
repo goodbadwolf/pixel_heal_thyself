@@ -1,0 +1,20 @@
+# Common model settings
+input_channels: 3
+aux_input_channels: 7
+feature_map_channels: 256
+curve_order: raster
+
+# Discriminator settings
+discriminator:
+  use_multiscale_discriminator: false
+  use_film: false
+
+# Loss weights
+losses:
+  l1_loss_w: 1.0
+  gan_loss_w: 0.005
+  gp_loss_w: 10
+  use_lpips_loss: false
+  lpips_loss_w: 0.1
+  use_ssim_loss: false
+  ssim_loss_w: 0.1

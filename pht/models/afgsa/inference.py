@@ -33,12 +33,12 @@ def _infer_single(cfg) -> None:
     m_cfg = cfg.model
     model_path = os.path.join(cfg.inference.model_dir, cfg.inference.model_file)
     print(f"-AFGSA modelPath = {model_path}")
-    print(f"-AFGSA inDir     = {cfg.inference.in_dir}")
+    print(f"-AFGSA inDir     = {cfg.inference.images.dir}")
     print(f"-AFGSA file      = {cfg.inference.file_name}")
 
     net = AFGSANet(
-        m_cfg.in_ch,
-        m_cfg.aux_in_ch,
+        m_cfg.input_channels,
+        m_cfg.aux_input_channels,
         m_cfg.base_ch,
         num_sa=m_cfg.num_sa,
         block_size=m_cfg.block_size,
@@ -52,7 +52,7 @@ def _infer_single(cfg) -> None:
 
     # ------------------------------------------------------------- I/O - noisy
     noisy_exr = pyexr.open(
-        os.path.join(cfg.inference.in_dir, f"{cfg.inference.file_name}.exr")
+        os.path.join(cfg.inference.images.dir, f"{cfg.inference.file_name}.exr")
     )
     width_in, height_in = noisy_exr.width / 1000, noisy_exr.height / 1000
     exr_all = noisy_exr.get_all()
@@ -112,7 +112,7 @@ def _infer_single(cfg) -> None:
     )
     out_post = np.transpose(postprocess_specular(out), (0, 2, 3, 1))[0]
 
-    save_path = os.path.join(cfg.paths.out_dir, "inferences")
+    save_path = os.path.join(cfg.paths.output_dir, "inferences")
     create_folder(save_path)
     save_filename = Path(cfg.inference.file_name).stem + "_clean.exr"
     print(f"-AFGSA outDir    = {save_path}")
@@ -133,7 +133,7 @@ def _infer_single(cfg) -> None:
         # cfg.inference.file_name remove the _32 at the end of the stem and then replace it with _1024
         gt_filename = f"{cfg.inference.file_name[:-3]}_1024{cfg.inference.gt_suffix}.exr"
         gt_exr = pyexr.open(
-            os.path.join(cfg.inference.in_dir, gt_filename)).get_all()
+            os.path.join(cfg.inference.images.dir, gt_filename)).get_all()
         gt = np.clip(np.nan_to_num(gt_exr["default"]), 0, np.max(gt_exr["default"]))
         # pyexr.write(os.path.join(save_path, "gt.exr"), gt)
 
@@ -154,9 +154,9 @@ def run(cfg) -> None:
     Hydra entry-point (mirrors train.run).
     Creates output dirs, delegates to _infer_single.
     """
-    create_folder(cfg.paths.out_dir)
+    create_folder(cfg.paths.output_dir)
     if cfg.inference.file_name is None:
-        exr_paths = sorted(Path(cfg.inference.in_dir).glob(cfg.inference.pattern))
+        exr_paths = sorted(Path(cfg.inference.images.dir).glob(cfg.inference.pattern))
         for p in exr_paths:
             if p.stem.startswith("._"):
                 continue
