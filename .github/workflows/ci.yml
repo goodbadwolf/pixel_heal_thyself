@@ -20,9 +20,64 @@ jobs:
         with:
           python-version-file: "pyproject.toml"
 
-      - name: Install the project
-        run: uv sync --locked --all-extras --dev
+      - name: Create virtual environment
+        run: uv venv
+
+      - name: Free up disk space
+        if: ${{ runner.os == 'Linux' }}
+        # https://github.com/easimon/maximize-build-space/blob/master/action.yml
+        # https://github.com/easimon/maximize-build-space/tree/test-report
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+
+      - name: Set up swap space
+        if: runner.os == 'Linux'
+        uses: pierotofy/set-swap-space@v1.0
+        with:
+          swap-size-gb: 10
+
+      - name: Install CUDA 12.6.0
+        uses: Jimver/cuda-toolkit@v0.2.19
+        id: cuda-toolkit
+        with:
+          cuda: 12.6.0
+          linux-local-args: '["--toolkit"]'
+          method: "network"
+          sub-packages: '["nvcc"]'
+
+      - name: Install PyTorch 2.6.0+cu126
+        run: |
+          source .venv/bin/activate
+          uv pip install --upgrade pip
+          uv pip install setuptools==68.0.0
+          uv pip install typing-extensions==4.12.2
+          uv pip install --no-cache-dir torch==2.6.0 torchvision==0.15.0 --index-url https://download.pytorch.org/whl/cu126
+          nvcc --version
+          python --version
+          python -c "import torch; print('PyTorch:', torch.__version__)"
+          python -c "import torch; print('CUDA:', torch.version.cuda)"
+          python -c "from torch.utils import cpp_extension; print (cpp_extension.CUDA_HOME)"
+
+      - name: Install special dependencies
+        run: |
+          source .venv/bin/activate
+          uv pip install setuptools==68.0.0
+          uv pip install ninja packaging wheel
+          # Set up CUDA environment variables
+          export PATH=/usr/local/cuda/bin:$PATH
+          export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+          export CUDA_HOME=/usr/local/cuda
+          # Install causal-conv1d with explicit build configuration
+          TORCH_CUDA_ARCH_LIST="7.5" uv pip install causal-conv1d>=1.5.0.post8 --no-build-isolation
+
+      - name: Install the project and all dependencies
+        run: |
+          source .venv/bin/activate
+          uv sync --locked --all-extras --dev
 
       - name: Run smoke test
         run: |
+          source .venv/bin/activate
           uv run python -m pht.train -cn ci
