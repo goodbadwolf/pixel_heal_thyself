@@ -13,6 +13,7 @@ from pht.models.afgsa.film import FiLM
 
 
 def print_model_structure(model):
+    return
     blank = ' '
     print('\t '+'-' * 95)
     print('\t ' + '|' + ' ' * 13 + 'weight name' + ' ' * 13 + '|' + ' ' * 15 + 'weight shape' + ' ' * 15 + '|'

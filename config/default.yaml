@@ -3,7 +3,9 @@ defaults:
   - model: afgsa
   - data: default
   - trainer: default
-  - override hydra/callbacks: custom_run_dirs
+
+_base_pattern: p${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}
+_dir_base_pattern: ${model.name}_${_base_pattern}
 
 # Global settings
 seed: 990819
@@ -13,13 +15,14 @@ run_num: -1
 # File paths
 paths:
   root: ${hydra:runtime.cwd}
-  output_dir: ${hydra:run.dir}
+  output_dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
 
 # Hydra configuration
 hydra:
   run:
-    dir: runs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+    dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
   job:
     chdir: false
   sweep:
-    dir: multiruns/${now:%Y-%m-%d}
+    dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, none, ${run_num}, true}
+    subdir: ${hydra.job.override_dirname}

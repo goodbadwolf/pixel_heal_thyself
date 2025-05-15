@@ -188,3 +188,5 @@ data/
 
 # Logs and other artefacts when running PHT
 runs/
+multiruns/
+outputs/

@@ -216,4 +216,7 @@ class Config:
 
         cfg_dict["trainer"] = trainer
 
+        # Remove keys that start with "_"
+        cfg_dict = {k: v for k, v in cfg_dict.items() if not k.startswith("_")}
+
         return cls(**cfg_dict)
