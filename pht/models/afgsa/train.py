@@ -2,10 +2,9 @@ import torch
 from torch.nn import Module
 from omegaconf import DictConfig
 
-from pht.config.base import Config, AFGSAModelConfig
-from pht.config.registry import ConfigRegistry
+from pht.config.base import AFGSAModelConfig
 from pht.models.afgsa.model import AFGSANet, CurveOrder
-from pht.models.afgsa.util import create_folder, set_global_seed
+from pht.models.afgsa.util import create_folder
 from pht.models.base_trainer import BaseTrainer, device
 
 
@@ -18,9 +17,6 @@ class AFGSATrainer(BaseTrainer):
         Returns:
             AFGSANet model instance
         """
-        padding_mode = "replicate" if self.deterministic else "reflect"
-        
-        # We know the model is AFGSAModelConfig
         model_cfg = self.cfg.model
         assert isinstance(model_cfg, AFGSAModelConfig)
         
@@ -33,7 +29,7 @@ class AFGSATrainer(BaseTrainer):
             halo_size=model_cfg.self_attention.halo_size,
             num_heads=model_cfg.self_attention.num_heads,
             num_gcp=model_cfg.num_gradient_checkpoints,
-            padding_mode=padding_mode,
+            padding_mode=self.padding_mode,
             curve_order=model_cfg.curve_order,
             use_film=model_cfg.use_film,
         ).to(device)

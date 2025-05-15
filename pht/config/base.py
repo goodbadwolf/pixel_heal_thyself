@@ -79,7 +79,7 @@ class TrainerConfig:
     # Training settings
     batch_size: int = 8
     epochs: int = 12
-    deterministic: bool = False
+    deterministic: bool = True
     save_interval: int = 1
     num_saved_imgs: int = 6
 

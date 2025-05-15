@@ -1,10 +1,9 @@
-import torch
 from torch.nn import Module
 from omegaconf import DictConfig
 
-from pht.config.base import Config, MambaModelConfig
+from pht.config.base import MambaModelConfig
 from pht.models.afgsa.model import CurveOrder
-from pht.models.afgsa.util import create_folder, set_global_seed
+from pht.models.afgsa.util import create_folder
 from pht.models.mamba.model import MambaDenoiserNet, PositionalEncoding2D
 from pht.models.base_trainer import BaseTrainer, device
 
@@ -38,6 +37,7 @@ class MambaTrainer(BaseTrainer):
             d_conv=model_cfg.d_conv,
             expansion=model_cfg.expansion,
             num_gcp=model_cfg.num_gradient_checkpoints,
+            padding_mode=self.padding_mode,
         ).to(device)
 
 
