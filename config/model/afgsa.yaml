@@ -9,4 +9,3 @@ afgsa:
     block_size: 8 # Size of the processing blocks for local attention
     halo_size: 3 # Size of the halo region for context
     num_heads: 4 # Number of attention heads in each self-attention layer
-  use_film: false
