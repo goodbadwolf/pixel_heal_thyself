@@ -1,9 +1,8 @@
 """Configuration registry for PHT models."""
 
-from dataclasses import fields
 from typing import Dict, Type
 
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig
 
 from pht.config.base import (
     AFGSAModelConfig,
@@ -49,6 +48,4 @@ class ConfigRegistry:
             raise TypeError(
                 f"Expected model config of type {model_class.__name__}, got {type(config.model).__name__}"
             )
-
-        # Additional validation logic could be added here
         return True

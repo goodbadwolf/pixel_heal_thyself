@@ -17,20 +17,20 @@ class PathConfig:
 
 
 @dataclass
+class ImagesConfig:
+    """Configuration for images."""
+
+    dir: str = "${paths.root}/data/images"
+    scale: float = 1.0
+
+
+@dataclass
 class PatchesConfig:
     """Configuration for data patches."""
 
     patch_size: int = 128
     num_patches: int = 400
     dir: str = "${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}"
-
-
-@dataclass
-class ImagesConfig:
-    """Configuration for images."""
-
-    dir: str = "${paths.root}/data/images"
-    scale: float = 1.0
 
 
 @dataclass
@@ -130,12 +130,21 @@ class BaseModelConfig:
 
 
 @dataclass
+class SelfAttentionConfig:
+    """Configuration for self-attention blocks."""
+
+    num_layers: int = 5
+    block_size: int = 8
+    halo_size: int = 3
+    num_heads: int = 4
+
+
+@dataclass
 class AFGSAModelConfig(BaseModelConfig):
     """Configuration for AFGSA model."""
 
     name: str = "afgsa"
     self_attention: SelfAttentionConfig = field(default_factory=SelfAttentionConfig)
-    use_film: bool = False
 
 
 @dataclass
@@ -164,6 +173,11 @@ class Config:
     )
 
     @classmethod
+    def parse_nested_config(cls, cfg_section, config_class):
+        """Utility to parse a nested config section into a dataclass instance."""
+        return config_class(**{k: v for k, v in cfg_section.items()})
+
+    @classmethod
     def from_hydra(cls, cfg: DictConfig) -> "Config":
         """Create a Config instance from a Hydra DictConfig."""
         # Convert DictConfig to plain dict
@@ -181,11 +195,11 @@ class Config:
 
         cfg_dict["model"] = model_cfg
 
-        # Create nested configs
-        cfg_dict["paths"] = PathConfig(**cfg.paths)
+        # Create nested configs using the utility
+        cfg_dict["paths"] = cls.parse_nested_config(cfg.paths, PathConfig)
         cfg_dict["data"] = DataConfig(
-            images=ImagesConfig(**cfg.data.images),
-            patches=PatchesConfig(**cfg.data.patches),
+            images=cls.parse_nested_config(cfg.data.images, ImagesConfig),
+            patches=cls.parse_nested_config(cfg.data.patches, PatchesConfig),
         )
 
         # Handle trainer config with losses subconfig
@@ -194,9 +208,11 @@ class Config:
             for k, v in cfg.trainer.items()
             if k not in ["optim", "scheduler", "losses"]
         }
-        trainer = TrainerConfig(**trainer_dict)
-        trainer.optim = OptimizerConfig(**cfg.trainer.optim)
-        trainer.scheduler = SchedulerConfig(**cfg.trainer.scheduler)
+        trainer = cls.parse_nested_config(trainer_dict, TrainerConfig)
+        trainer.optim = cls.parse_nested_config(cfg.trainer.optim, OptimizerConfig)
+        trainer.scheduler = cls.parse_nested_config(
+            cfg.trainer.scheduler, SchedulerConfig
+        )
 
         cfg_dict["trainer"] = trainer
 
