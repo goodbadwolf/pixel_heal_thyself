@@ -8,4 +8,3 @@ mamba:
   d_state: 64 # Dimension of the state space in Mamba layers
   d_conv: 4 # Dimension of the convolution kernel
   expansion: 4 # Channel expansion factor in each layer
-  num_gcp: 0 # Number of gradient checkpoints

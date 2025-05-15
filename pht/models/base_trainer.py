@@ -230,7 +230,7 @@ class BaseTrainer(ABC):
                 self.cfg.data.patches.num_patches,
                 self.cfg.seed,
                 self.cfg.data_ratio,
-                resize=self.cfg.data.images.scale,
+                scale=self.cfg.data.images.scale,
             )
             constructor.construct_hdf5()
 

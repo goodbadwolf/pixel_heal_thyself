@@ -28,8 +28,8 @@ class CustomRunDirs:
         )
 
         model_name = config.model.name
-        resize_value = config.data.get("resize", 1.0)
-        base_pattern = f"{model_name}_p{config.data.patches.patch_size}_n{config.data.patches.num_patches}_r{resize_value}"
+        scale_value = config.data.images.scale
+        base_pattern = f"{model_name}_p{config.data.patches.patch_size}_n{config.data.patches.num_patches}_r{scale_value}"
 
         is_multirun = "multirun" in cwd
         if is_multirun:
