@@ -8,7 +8,7 @@ import multiprocessing
 
 
 class Hdf5Constructor:
-    def __init__(self, data_path, save_path, patch_size, num_patches, seed, train_val_ratio, resize=1.0, noisy_spp=32, gt_spp=1024, deterministic=False):
+    def __init__(self, data_path, save_path, patch_size, num_patches, seed, train_val_ratio, scale=1.0, noisy_spp=32, gt_spp=1024, deterministic=False):
         self.data_path = data_path
         self.save_path = save_path
         self.patch_size = patch_size
@@ -18,7 +18,7 @@ class Hdf5Constructor:
         self.noisy_spp = noisy_spp
         self.gt_spp = gt_spp
         self.deterministic = deterministic
-        self.resize = resize
+        self.scale = scale
 
         self.exr_paths = []
         self.gt_paths = []
@@ -70,7 +70,7 @@ class Hdf5Constructor:
             elif not queues[1].empty():
                 path = queues[1].get()
                 dataset = 'val'
-            cropped, patches = get_cropped_patches(path[0], path[1], self.patch_size, self.num_patches, rng, resize=self.resize)
+            cropped, patches = get_cropped_patches(path[0], path[1], self.patch_size, self.num_patches, rng, scale=self.scale)
 
             lock.acquire()
             with h5py.File(path_mapping[dataset], 'a') as hf:
@@ -102,7 +102,7 @@ class Hdf5Constructor:
         for i, n in enumerate(['train', 'val']):
             with h5py.File(path_mapping[n], 'w') as hf:
                 cropped, patches = get_cropped_patches(self.paths[i][0], self.paths[i][1], self.patch_size,
-                                                       self.num_patches, rng, resize=self.resize)
+                                                       self.num_patches, rng, scale=self.scale)
                 patch_count += len(cropped)
                 for key in name_shape_mapping.keys():
                     temp = np.array([c[key] for c in cropped])

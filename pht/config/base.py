@@ -5,6 +5,8 @@ from typing import List, Union
 
 from omegaconf import DictConfig
 
+from pht.models.afgsa.model import CurveOrder
+
 
 @dataclass
 class PathConfig:
@@ -20,7 +22,7 @@ class PatchesConfig:
 
     patch_size: int = 128
     num_patches: int = 400
-    dir: str = "${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.resize}"
+    dir: str = "${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}"
 
 
 @dataclass
@@ -120,7 +122,9 @@ class BaseModelConfig:
     input_channels: int = 3
     aux_input_channels: int = 7
     feature_map_channels: int = 256
-    curve_order: str = "raster"
+    curve_order: CurveOrder = CurveOrder.RASTER
+    use_film: bool = False
+    num_gradient_checkpoints: int = 0
     discriminator: DiscriminatorConfig = field(default_factory=DiscriminatorConfig)
     losses: LossesConfig = field(default_factory=LossesConfig)
 
@@ -131,6 +135,7 @@ class AFGSAModelConfig(BaseModelConfig):
 
     name: str = "afgsa"
     self_attention: SelfAttentionConfig = field(default_factory=SelfAttentionConfig)
+    use_film: bool = False
 
 
 @dataclass
@@ -142,18 +147,6 @@ class MambaModelConfig(BaseModelConfig):
     d_state: int = 64
     d_conv: int = 4
     expansion: int = 4
-    num_gcp: int = 0
-
-
-@dataclass
-class ModelCommonConfig:
-    """Common configuration for all models."""
-
-    input_channels: int = 3
-    aux_input_channels: int = 7
-    feature_map_channels: int = 256
-    curve_order: str = "raster"
-    use_film: bool = False
 
 
 @dataclass
@@ -163,7 +156,6 @@ class Config:
     seed: int = 990819
     data_ratio: float = 0.95
     run_num: int = -1
-    model_common: ModelCommonConfig = field(default_factory=ModelCommonConfig)
     paths: PathConfig = field(default_factory=PathConfig)
     data: DataConfig = field(default_factory=DataConfig)
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
@@ -176,9 +168,7 @@ class Config:
         """Create a Config instance from a Hydra DictConfig."""
         # Convert DictConfig to plain dict
         cfg_dict = {
-            k: v
-            for k, v in cfg.items()
-            if not k.startswith("_") and k != "model" and k != "model_common"
+            k: v for k, v in cfg.items() if not k.startswith("_") and k != "model"
         }
 
         # Create appropriate model config based on model name
@@ -190,10 +180,6 @@ class Config:
             raise ValueError(f"Unsupported model: {cfg.model.name}")
 
         cfg_dict["model"] = model_cfg
-
-        # Create model_common config
-        if hasattr(cfg, "model_common"):
-            cfg_dict["model_common"] = ModelCommonConfig(**cfg.model_common)
 
         # Create nested configs
         cfg_dict["paths"] = PathConfig(**cfg.paths)

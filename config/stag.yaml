@@ -3,6 +3,8 @@ defaults:
   - _self_
 
 data:
+  images:
+    scale: 0.5
   patches:
     patch_size: 64
     num_patches: 200
