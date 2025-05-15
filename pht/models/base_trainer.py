@@ -3,13 +3,12 @@ import os
 import random
 import time
 from abc import ABC, abstractmethod
-from typing import Tuple, Optional, Union, Any
+from typing import Tuple, Optional
 
 import lpips
 import numpy as np
 import torch
 import torch.optim as optim
-from omegaconf import DictConfig
 from torch.optim import lr_scheduler
 from torch.nn import Module
 
@@ -26,7 +25,7 @@ from pht.models.losses import (
     SSIMLoss,
 )
 from pht.models.afgsa.metric import calculate_psnr, calculate_rmse, calculate_ssim
-from pht.models.afgsa.model import CurveOrder, DiscriminatorVGG, print_model_structure
+from pht.models.afgsa.model import DiscriminatorVGG, print_model_structure
 from pht.models.afgsa.prefetch_dataloader import DataLoaderX
 from pht.models.afgsa.preprocessing import (
     postprocess_specular,
@@ -44,33 +43,16 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]  # NHWC → NCHW
 
 
-def set_global_seed(seed: int) -> None:
-    """Set random seeds for all libraries to ensure reproducibility.
-
-    Args:
-        seed: The seed value to use
-    """
+def set_determinism(seed: int, deterministic: bool = True) -> None:
     random.seed(seed)
     np.random.seed(seed)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    # For new‑style CUDA algos
-    torch.use_deterministic_algorithms(True, warn_only=True)
-
-
-def setup_deterministic_training(seed: int) -> None:
-    """Set up fully deterministic training.
-
-    This function sets random seeds and enables deterministic algorithms
-    for all libraries used in the training pipeline.
-
-    Args:
-        seed: The seed value to use
-    """
-    set_global_seed(seed)
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    if deterministic:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 class BaseTrainer(ABC):
@@ -88,8 +70,7 @@ class BaseTrainer(ABC):
         self.model_name = self.__class__.__name__.replace("Trainer", "")
 
         # Set up deterministic training if requested
-        if self.deterministic:
-            setup_deterministic_training(self.cfg.seed)
+        set_determinism(self.cfg.seed, self.deterministic)
 
     @abstractmethod
     def create_generator(self) -> Module:
@@ -187,8 +168,7 @@ class BaseTrainer(ABC):
     def print_training_config(self) -> None:
         """Print the training configuration."""
         print(f"\t-Creating {self.model_name}")
-        padding_mode = "replicate" if self.deterministic else "reflect"
-        print(f"\t\t-{self.model_name} padding mode: {padding_mode}")
+        print(f"\t\t-{self.model_name} padding mode: {self.padding_mode}")
         print(f"\t\t-{self.model_name} curve order: {self.cfg.model.curve_order}")
         print(f"\t\t-{self.model_name} L1 lossW: {self.cfg.model.losses.l1_loss_w}")
         print(f"\t\t-{self.model_name} GAN lossW: {self.cfg.model.losses.gan_loss_w}")
@@ -247,7 +227,9 @@ class BaseTrainer(ABC):
                 generator=g,
                 num_workers=7,
                 pin_memory=True,
-                worker_init_fn=lambda wid: set_global_seed(self.cfg.seed + wid),
+                worker_init_fn=lambda wid: set_determinism(
+                    self.cfg.seed + wid, self.deterministic
+                ),
             )
         else:
             train_dataloader = DataLoaderX(
@@ -267,7 +249,7 @@ class BaseTrainer(ABC):
             g.manual_seed(self.cfg.seed)
             val_dataloader = DataLoaderX(
                 val_dataset,
-                batch_size=self.cfg.trainer.batch_size,
+                batch_size=1,
                 shuffle=False,
                 generator=g,
                 num_workers=7,
@@ -276,7 +258,7 @@ class BaseTrainer(ABC):
         else:
             val_dataloader = DataLoaderX(
                 val_dataset,
-                batch_size=self.cfg.trainer.batch_size,
+                batch_size=1,
                 shuffle=False,
                 num_workers=7,
                 pin_memory=True,
@@ -291,6 +273,7 @@ class BaseTrainer(ABC):
             self.setup_dataloaders()
         )
 
+        self.padding_mode = "replicate" if self.deterministic else "reflect"
         # Create models and training components
         self.print_training_config()
         G = self.create_generator()

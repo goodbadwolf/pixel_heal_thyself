@@ -2,7 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from torch.utils.checkpoint import checkpoint
-from mamba_ssm import Mamba, Mamba2
+from mamba_ssm import Mamba2
 
 
 def mm_conv_block(
@@ -13,7 +13,6 @@ def mm_conv_block(
     dilation=1,
     padding=0,
     padding_mode="zeros",
-    norm_type=None,
     act_type="relu",
     groups=1,
     inplace=True,
@@ -33,7 +32,15 @@ def mm_conv_block(
 
 
 class MambaBlock(nn.Module):
-    def __init__(self, ch, d_state=64, d_conv=5, expansion=2, checkpoint=True):
+    def __init__(
+        self,
+        ch,
+        d_state=64,
+        d_conv=5,
+        expansion=2,
+        padding_mode="reflect",
+        checkpoint=True,
+    ):
         super(MambaBlock, self).__init__()
         self.checkpoint = checkpoint
         self.norm1 = nn.LayerNorm(ch)
@@ -46,7 +53,7 @@ class MambaBlock(nn.Module):
                 ch,
                 kernel_size=3,
                 padding=1,
-                padding_mode="reflect",
+                padding_mode=padding_mode,
                 act_type="relu",
             ),
             mm_conv_block(
@@ -54,7 +61,7 @@ class MambaBlock(nn.Module):
                 ch,
                 kernel_size=3,
                 padding=1,
-                padding_mode="reflect",
+                padding_mode=padding_mode,
                 act_type="relu",
             ),
         )
@@ -89,6 +96,7 @@ class MambaDenoiserNet(nn.Module):
         d_conv=5,
         expansion=2,
         num_gcp=2,
+        padding_mode="reflect",
     ):
         super(MambaDenoiserNet, self).__init__()
         assert num_gcp <= num_blocks
@@ -99,7 +107,7 @@ class MambaDenoiserNet(nn.Module):
             256,
             kernel_size=3,
             padding=1,
-            padding_mode="reflect",
+            padding_mode=padding_mode,
             act_type="relu",
         )
         self.conv5 = mm_conv_block(
@@ -107,7 +115,7 @@ class MambaDenoiserNet(nn.Module):
             256,
             kernel_size=5,
             padding=2,
-            padding_mode="reflect",
+            padding_mode=padding_mode,
             act_type="relu",
         )
         self.conv_map = mm_conv_block(256 * 3, base_ch, kernel_size=1, act_type="relu")
@@ -120,7 +128,7 @@ class MambaDenoiserNet(nn.Module):
             256,
             kernel_size=3,
             padding=1,
-            padding_mode="reflect",
+            padding_mode=padding_mode,
             act_type="leakyrelu",
         )
         self.conv_a5 = mm_conv_block(
@@ -128,7 +136,7 @@ class MambaDenoiserNet(nn.Module):
             256,
             kernel_size=5,
             padding=2,
-            padding_mode="reflect",
+            padding_mode=padding_mode,
             act_type="leakyrelu",
         )
         self.conv_aenc1 = mm_conv_block(
@@ -158,7 +166,7 @@ class MambaDenoiserNet(nn.Module):
                 base_ch,
                 kernel_size=3,
                 padding=1,
-                padding_mode="reflect",
+                padding_mode=padding_mode,
                 act_type="relu",
             ),
             mm_conv_block(
@@ -166,7 +174,7 @@ class MambaDenoiserNet(nn.Module):
                 base_ch,
                 kernel_size=3,
                 padding=1,
-                padding_mode="reflect",
+                padding_mode=padding_mode,
                 act_type="relu",
             ),
             mm_conv_block(

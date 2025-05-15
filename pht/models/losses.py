@@ -3,10 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-import numpy as np
 from torch import autograd
-
-Tensor = torch.cuda.FloatTensor
 
 
 class GradientPenaltyLoss(nn.Module):
@@ -25,8 +22,9 @@ class GradientPenaltyLoss(nn.Module):
 
     def forward(self, D, real_data, fake_data):
         # random weight term for interpolation between real and fake samples
-        alpha = Tensor(real_data.shape[0], 1, 1, 1).to(self.device)
-        alpha.uniform_()
+        alpha = torch.rand(
+            (real_data.shape[0], 1, 1, 1), dtype=torch.float32, device=self.device
+        )
         # get random interpolation between real and fake samples
         interpolates = alpha * fake_data.detach() + (1 - alpha) * real_data
         interpolates.requires_grad = True
@@ -56,14 +54,19 @@ class WDivGradientPenaltyLoss(nn.Module):
 
     def forward(self, discriminator, real_data, fake_data, p=6):
         # random weight term for interpolation between real and fake samples
-        alpha = Tensor(np.random.random((real_data.shape[0], 1, 1, 1)))
+        alpha = torch.rand(
+            (real_data.shape[0], 1, 1, 1), dtype=torch.float32, device=real_data.device
+        )
         # get random interpolation between real and fake samples
         interpolates = (alpha * real_data + ((1 - alpha) * fake_data)).requires_grad_(
             True
         )
         pred_d_interpolates = discriminator(interpolates)
-        fake_grad_outputs = autograd.Variable(
-            Tensor(real_data.shape[0], 1).fill_(1.0), requires_grad=False
+        fake_grad_outputs = torch.ones(
+            (real_data.shape[0], 1),
+            dtype=real_data.dtype,
+            device=real_data.device,
+            requires_grad=False,
         )
         gradients = autograd.grad(
             outputs=pred_d_interpolates,
