@@ -37,7 +37,7 @@ class MambaTrainer(BaseTrainer):
             d_state=model_cfg.d_state,
             d_conv=model_cfg.d_conv,
             expansion=model_cfg.expansion,
-            num_gcp=model_cfg.num_gcp,
+            num_gcp=model_cfg.num_gradient_checkpoints,
         ).to(device)
 
 

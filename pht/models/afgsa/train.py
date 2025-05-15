@@ -32,10 +32,10 @@ class AFGSATrainer(BaseTrainer):
             block_size=model_cfg.self_attention.block_size,
             halo_size=model_cfg.self_attention.halo_size,
             num_heads=model_cfg.self_attention.num_heads,
-            num_gcp=self.cfg.trainer.num_gradient_checkpoint,
+            num_gcp=model_cfg.num_gradient_checkpoints,
             padding_mode=padding_mode,
-            curve_order=self.cfg.trainer.curve_order,
-            use_film=model_cfg.use_film
+            curve_order=model_cfg.curve_order,
+            use_film=model_cfg.use_film,
         ).to(device)
 
 
