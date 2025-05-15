@@ -43,16 +43,25 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]  # NHWC → NCHW
 
 
-def set_determinism(seed: int, deterministic: bool = True) -> None:
+def set_determinism(seed: int, deterministic: bool = True, prefix=None) -> None:
     random.seed(seed)
     np.random.seed(seed)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    os.environ["PYTHONHASHSEED"] = str(seed)
     if deterministic:
         torch.use_deterministic_algorithms(True, warn_only=True)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
+    # msg = f"{prefix + ': ' if prefix else ''}Determinism set to {deterministic} with seed {seed}"
+    # print(msg, flush=True)
+
+
+def worker_init_fn(worker_id, base_seed, deterministic):
+    set_determinism(
+        base_seed + worker_id, deterministic, prefix=f"Trainer worker {worker_id}"
+    )
 
 
 class BaseTrainer(ABC):
@@ -70,7 +79,7 @@ class BaseTrainer(ABC):
         self.model_name = self.__class__.__name__.replace("Trainer", "")
 
         # Set up deterministic training if requested
-        set_determinism(self.cfg.seed, self.deterministic)
+        set_determinism(self.cfg.seed, self.deterministic, self.model_name)
 
     @abstractmethod
     def create_generator(self) -> Module:
@@ -227,8 +236,8 @@ class BaseTrainer(ABC):
                 generator=g,
                 num_workers=7,
                 pin_memory=True,
-                worker_init_fn=lambda wid: set_determinism(
-                    self.cfg.seed + wid, self.deterministic
+                worker_init_fn=lambda wid: worker_init_fn(
+                    wid, self.cfg.seed, self.deterministic
                 ),
             )
         else:
@@ -254,6 +263,9 @@ class BaseTrainer(ABC):
                 generator=g,
                 num_workers=7,
                 pin_memory=True,
+                worker_init_fn=lambda wid: worker_init_fn(
+                    wid, self.cfg.seed, self.deterministic
+                ),
             )
         else:
             val_dataloader = DataLoaderX(
