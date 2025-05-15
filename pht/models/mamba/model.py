@@ -156,6 +156,7 @@ class MambaDenoiserNet(nn.Module):
                     d_conv=d_conv,
                     expansion=expansion,
                     checkpoint=use_checkpoint,
+                    padding_mode=padding_mode,
                 )
             )
         self.mamba_blocks = nn.Sequential(*mamba_blocks)
