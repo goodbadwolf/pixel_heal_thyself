@@ -153,7 +153,6 @@ class ModelCommonConfig:
     aux_input_channels: int = 7
     feature_map_channels: int = 256
     curve_order: str = "raster"
-    use_multiscale_discriminator: bool = False
     use_film: bool = False
 
 

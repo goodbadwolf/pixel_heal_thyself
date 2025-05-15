@@ -3,11 +3,11 @@ input_channels: 3
 aux_input_channels: 7
 feature_map_channels: 256
 curve_order: raster
+num_gradient_checkpoints: 0
 
 # Discriminator settings
 discriminator:
   use_multiscale_discriminator: false
-  use_film: false
 
 # Loss weights
 losses:
