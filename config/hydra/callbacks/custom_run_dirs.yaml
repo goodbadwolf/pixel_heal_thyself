@@ -1,2 +1,0 @@
-custom_run_dirs:
-  _target_: pht.hydra.plugins.custom_run_dirs.CustomRunDirs

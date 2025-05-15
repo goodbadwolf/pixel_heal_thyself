@@ -11,7 +11,7 @@ images:
 
 # Patch settings
 patches:
-  dir: ${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}
+  dir: ${data.images.dir}/patches_${_base_pattern}
 
   # Square patch size in pixels
   patch_size: 128

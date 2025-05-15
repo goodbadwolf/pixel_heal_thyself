@@ -1,10 +1,13 @@
 import hydra
 from omegaconf import DictConfig
 
+from pht.hydra.plugins.pht_run_dirs_resolver import register_pht_run_dirs_resolver
 from pht.config.registry import ConfigRegistry
 from pht.models.afgsa.model import CurveOrder
 from pht.models.afgsa.train import AFGSATrainer
 from pht.models.mamba.train import MambaTrainer
+
+register_pht_run_dirs_resolver()
 
 
 @hydra.main(version_base=None, config_path="../config", config_name="default")
