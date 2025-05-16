@@ -159,6 +159,13 @@ class MambaModelConfig(BaseModelConfig):
 
 
 @dataclass
+class LoggingConfig:
+    """Configuration for logging."""
+
+    level: str = "INFO"
+
+
+@dataclass
 class Config:
     """Main configuration for PHT."""
 
@@ -171,6 +178,7 @@ class Config:
     model: Union[AFGSAModelConfig, MambaModelConfig] = field(
         default_factory=lambda: AFGSAModelConfig()
     )
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     @classmethod
     def parse_nested_config(cls, cfg_section, config_class):
@@ -215,6 +223,8 @@ class Config:
         )
 
         cfg_dict["trainer"] = trainer
+
+        cfg_dict["logging"] = cls.parse_nested_config(cfg.logging, LoggingConfig)
 
         # Remove keys that start with "_"
         cfg_dict = {k: v for k, v in cfg_dict.items() if not k.startswith("_")}

@@ -2,6 +2,7 @@ import torch
 import os
 import h5py
 
+from pht.logger import logger
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, dataset_path):
@@ -18,7 +19,7 @@ class Dataset(torch.utils.data.Dataset):
         with h5py.File(self.dataset_path, 'r') as file:
             self.dataset_len = len(file["aux"])
             name = self.dataset_path[self.dataset_path.rfind('\\')+1:]
-        print("Data set %s has %d samples in total" % (name, self.dataset_len))
+        logger.info(f"Data set {name} has {self.dataset_len} samples in total")
 
     def __len__(self):
         return self.dataset_len

@@ -17,6 +17,9 @@ paths:
   root: ${hydra:runtime.cwd}
   output_dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
 
+logging:
+  level: INFO
+
 # Hydra configuration
 hydra:
   run:
@@ -26,3 +29,9 @@ hydra:
   sweep:
     dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, none, ${run_num}, true}
     subdir: ${hydra.job.override_dirname}
+  job_logging:
+    loggers:
+      pht:
+        level: ${logging.level}
+      torch:
+        level: ${logging.level}

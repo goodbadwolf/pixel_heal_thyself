@@ -21,6 +21,7 @@ from pht.models.afgsa.preprocessing import (
     preprocess_normal,
     preprocess_depth,
 )
+from pht.logger import logger
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 _PERM = [0, 3, 1, 2]  # NHWC → NCHW
@@ -32,9 +33,9 @@ def _infer_single(cfg) -> None:
     # ------------------------------------------------------------------ model
     m_cfg = cfg.model
     model_path = os.path.join(cfg.inference.model_dir, cfg.inference.model_file)
-    print(f"-Mamba modelPath = {model_path}")
-    print(f"-Mamba inDir     = {cfg.inference.images.dir}")
-    print(f"-Mamba file      = {cfg.inference.file_name}")
+    logger.info(f"Mamba modelPath = {model_path}")
+    logger.info(f"Mamba inDir     = {cfg.inference.images.dir}")
+    logger.info(f"Mamba file      = {cfg.inference.file_name}")
 
     # Create positional encoding for the model
     pos_encoder = PositionalEncoding2D(
@@ -89,7 +90,7 @@ def _infer_single(cfg) -> None:
     aux_chunks = (aux_t[..., :split1], aux_t[..., split2:])
     outputs = []
 
-    print("\tStart denoising")
+    logger.info("Start denoising")
     with torch.no_grad():
         for noisy_c, aux_c in zip(noisy_chunks, aux_chunks):
             outputs.append(net(noisy_c, aux_c))
@@ -106,12 +107,12 @@ def _infer_single(cfg) -> None:
     save_path = os.path.join(cfg.paths.output_dir, "inferences")
     create_folder(save_path)
     save_filename = Path(cfg.inference.file_name).stem + "_clean.exr"
-    print(f"-Mamba outDir    = {save_path}")
-    print(f"-Mamba outFile   = {save_filename}")
+    logger.info(f"Mamba outDir    = {save_path}")
+    logger.info(f"Mamba outFile   = {save_filename}")
     pyexr.write(os.path.join(save_path, save_filename), out_post)
     output_img_255 = tensor2img(out, post_spec=True)[0]
 
-    print("\tDone!")
+    logger.info("Done!")
 
     # -------------------------------------------------------------- metrics
     if cfg.inference.load_gt:
@@ -129,10 +130,10 @@ def _infer_single(cfg) -> None:
         ssim = calculate_ssim(output_img_255.copy(), tensor2img(gt.transpose(2, 0, 1)))
 
         eval_filename = f"{cfg.inference.file_name}_evaluation.txt"
-        print(f"-Mamba evalFile  = {eval_filename}")
+        logger.info(f"Mamba evalFile  = {eval_filename}")
         with open(os.path.join(save_path, eval_filename), "w") as f:
             f.write(f"RMSE: {rmse:.6f}\tPSNR: {psnr:.6f}\t1-SSIM: {1 - ssim:.6f}\n")
-        print(f"\tRMSE: {rmse:.6f}\tPSNR: {psnr:.6f}\t1-SSIM: {1 - ssim:.6f}")
+        logger.info(f"\tRMSE: {rmse:.6f}\tPSNR: {psnr:.6f}\t1-SSIM: {1 - ssim:.6f}")
 
 
 # --------------------------------------------------------------------------- #

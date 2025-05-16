@@ -1,4 +1,3 @@
-import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -7,8 +6,7 @@ from typing import Optional
 from omegaconf import OmegaConf
 
 from pht.utils import SingletonMeta, is_none_or_empty, is_truthy
-
-logger = logging.getLogger(__name__)
+from pht.logger import logger
 
 
 @dataclass

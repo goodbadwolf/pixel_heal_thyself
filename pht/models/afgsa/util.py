@@ -6,6 +6,8 @@ import pyexr
 import random
 import numpy as np
 import torch
+from pht.logger import logger
+
 matplotlib.use('Agg')
 
 
@@ -43,19 +45,19 @@ def show_exr_info(exr_path):
     assert exr_path, 'Exr_path cannot be empty.'
     assert exr_path.endswith('exr'), "Img to be shown must be in '.exr' format."
     exr = pyexr.open(exr_path)
-    print("Width:", exr.width)
-    print("Height:", exr.height)
-    print("Available channels:")
+    logger.info(f"Width: {exr.width}")
+    logger.info(f"Height: {exr.height}")
+    logger.info(f"Available channels:")
     exr.describe_channels()
-    print("Default channels:", exr.channel_map['default'])
+    logger.info(f"Default channels: {exr.channel_map['default']}")
 
 
 def show_exr_channel(exr_path, channel):
     exr = pyexr.open(exr_path)
     data = exr.get(channel)
-    print("Channel:", channel)
-    print("Shape:", data.shape)
-    print("Max: %f    Min: %f" % (np.max(data), np.min(data)))
+    logger.info(f"Channel: {channel}")
+    logger.info(f"Shape: {data.shape}")
+    logger.info(f"Max: {np.max(data):f}    Min: {np.min(data):f}")
     data = process_data(data, channel, exr.width, exr.height)
     _show_data(data, channel)
 
