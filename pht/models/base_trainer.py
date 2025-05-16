@@ -4,6 +4,7 @@ import random
 import time
 from abc import ABC, abstractmethod
 from typing import Tuple, Optional
+import traceback
 
 import lpips
 import numpy as np
@@ -38,6 +39,8 @@ from pht.models.afgsa.util import (
     tensor2img,
 )
 
+from pht.logger import logger
+
 # Global constants
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]  # NHWC → NCHW
@@ -55,7 +58,7 @@ def set_determinism(seed: int, deterministic: bool = True, prefix=None) -> None:
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
     # msg = f"{prefix + ': ' if prefix else ''}Determinism set to {deterministic} with seed {seed}"
-    # print(msg, flush=True)
+    # logger.info(msg)
 
 
 def worker_init_fn(worker_id, base_seed, deterministic):
@@ -176,24 +179,24 @@ class BaseTrainer(ABC):
 
     def print_training_config(self) -> None:
         """Print the training configuration."""
-        print(f"\t-Creating {self.model_name}")
-        print(f"\t\t-{self.model_name} padding mode: {self.padding_mode}")
-        print(f"\t\t-{self.model_name} curve order: {self.cfg.model.curve_order}")
-        print(f"\t\t-{self.model_name} L1 lossW: {self.cfg.model.losses.l1_loss_w}")
-        print(f"\t\t-{self.model_name} GAN lossW: {self.cfg.model.losses.gan_loss_w}")
-        print(f"\t\t-{self.model_name} GP lossW: {self.cfg.model.losses.gp_loss_w}")
+        logger.info(f"Creating {self.model_name}")
+        logger.info(f"{self.model_name} padding mode: {self.padding_mode}")
+        logger.info(f"{self.model_name} curve order: {self.cfg.model.curve_order}")
+        logger.info(f"{self.model_name} L1 lossW: {self.cfg.model.losses.l1_loss_w}")
+        logger.info(f"{self.model_name} GAN lossW: {self.cfg.model.losses.gan_loss_w}")
+        logger.info(f"{self.model_name} GP lossW: {self.cfg.model.losses.gp_loss_w}")
         if self.cfg.model.losses.use_lpips_loss:
-            print(
-                f"\t\t-{self.model_name} LPIPS lossW: {self.cfg.model.losses.lpips_loss_w}"
+            logger.info(
+                f"{self.model_name} LPIPS lossW: {self.cfg.model.losses.lpips_loss_w}"
             )
         if self.cfg.model.losses.use_ssim_loss:
-            print(
-                f"\t\t-{self.model_name} SSIM lossW: {self.cfg.model.losses.ssim_loss_w}"
+            logger.info(
+                f"{self.model_name} SSIM lossW: {self.cfg.model.losses.ssim_loss_w}"
             )
         if self.cfg.model.discriminator.use_multiscale_discriminator:
-            print(f"\t\t-{self.model_name} multiscale discriminator")
+            logger.info(f"{self.model_name} multiscale discriminator")
         if self.cfg.model.discriminator.use_film:
-            print(f"\t\t-{self.model_name} use FiLM")
+            logger.info(f"{self.model_name} use FiLM")
 
     def setup_dataloaders(self) -> Tuple[DataLoaderX, DataLoaderX, int, int]:
         """Set up and return the training and validation dataloaders.
@@ -210,7 +213,7 @@ class BaseTrainer(ABC):
             if not os.path.exists(path):
                 exist = False
         if not exist:
-            print(f"Creating dataset: patches in {self.cfg.data.patches.dir}")
+            logger.info(f"Creating dataset: patches in {self.cfg.data.patches.dir}")
             os.makedirs(self.cfg.data.patches.dir, exist_ok=True)
             constructor = Hdf5Constructor(
                 self.cfg.data.images.dir,
@@ -280,7 +283,10 @@ class BaseTrainer(ABC):
 
     def train(self) -> None:
         """Main training loop."""
-        print(f"Loading dataset: patches from {self.cfg.data.patches.dir}")
+        logger.info(
+            f"Starting training: model={self.model_name}, seed={self.cfg.seed}, batch_size={self.cfg.trainer.batch_size}, epochs={self.cfg.trainer.epochs}"
+        )
+        logger.info(f"Loading dataset: patches from {self.cfg.data.patches.dir}")
         train_dataloader, val_dataloader, train_num_samples, val_num_samples = (
             self.setup_dataloaders()
         )
@@ -318,7 +324,7 @@ class BaseTrainer(ABC):
         save_img_interval = val_num_samples // self.cfg.trainer.num_saved_imgs
         root_save_path = self.cfg.paths.output_dir
 
-        print("\t-Start training")
+        logger.info("Start training")
         end = None
         for epoch in range(self.cfg.trainer.epochs):
             start = time.time()
@@ -355,8 +361,9 @@ class BaseTrainer(ABC):
                         loss_d_real = gan_loss(pred_d_real, True)
                         loss_d_fake = gan_loss(pred_d_fake, False)
                         loss_gp = gp_loss(D, gt, output.detach())
-                    except:  # noqa: E722
-                        break
+                    except Exception as e:
+                        logger.error(f"Error in discriminator loss calculation: {e}")
+                        logger.error(f"Stack trace: {traceback.format_exc()}")
                     discriminator_loss = (
                         loss_d_fake + loss_d_real
                     ) / 2 + self.cfg.model.losses.gp_loss_w * loss_gp
@@ -377,7 +384,9 @@ class BaseTrainer(ABC):
                     else:
                         loss_g_fake = gan_loss(pred_g_fake, True)
                     loss_l1 = l1_loss(output, gt)
-                except:  # noqa: E722
+                except Exception as e:
+                    logger.error(f"Error in generator loss calculation: {e}")
+                    logger.error(f"Stack trace: {traceback.format_exc()}")
                     break
                 generator_loss = (
                     self.cfg.model.losses.gan_loss_w * loss_g_fake
@@ -415,19 +424,17 @@ class BaseTrainer(ABC):
                 else:
                     iter_took = time.time() - end
                 end = time.time()
-                print(
-                    f"\r\t-Epoch: {epoch + 1} \tTook: {end - start:.2f} sec \tIteration: {i_batch + 1}/{total_iterations} "
-                    f"\tIter Took: {iter_took:.2f} sec \tI/O Took: {io_took:.2f} sec "
-                    f"\tG Loss: {accumulated_generator_loss / (i_batch + 1):.4f} \tD Loss: {accumulated_discriminator_loss / (i_batch + 1):.4f}",
-                    end="",
-                    flush=True,
-                )
+                if i_batch % 10 == 0 or i_batch == total_iterations - 1:
+                    logger.debug(
+                        f"[Train] epoch={epoch + 1} iter={i_batch + 1}/{total_iterations} "
+                        f"g_loss={accumulated_generator_loss / (i_batch + 1):.4f} "
+                        f"d_loss={accumulated_discriminator_loss / (i_batch + 1):.4f} "
+                        f"iter_time={iter_took:.2f}s io_time={io_took:.2f}s"
+                    )
 
-            end = time.time()
-            print(
-                f"\r\t-Epoch: {epoch + 1} \tG loss: {accumulated_generator_loss / (i_batch + 1):.4f} "
-                f"\tD Loss: {accumulated_discriminator_loss / (i_batch + 1):.4f} \tTook: {int(end - start)} seconds",
-                flush=True,
+            logger.info(
+                f"[Train] epoch={epoch + 1} summary: g_loss={accumulated_generator_loss / (i_batch + 1):.4f} "
+                f"d_loss={accumulated_discriminator_loss / (i_batch + 1):.4f} time={int(end - start)}s"
             )
 
             # Save loss values
@@ -526,21 +533,19 @@ class BaseTrainer(ABC):
                 avg_ssim += calculate_ssim(output_c_n_255.copy(), gt_c_n_255.copy())
 
                 end = time.time()
-                print(
-                    f"\r\t-Validation: {epoch + 1} \tTook: {end - start:.2f} seconds "
-                    f"\tIteration: {i_batch + 1}/{val_num_samples}",
-                    end="",
-                    flush=True,
-                )
+                if i_batch % 10 == 0 or i_batch == val_num_samples - 1:
+                    logger.debug(
+                        f"[Val] epoch={epoch + 1} iter={i_batch + 1}/{val_num_samples} "
+                        f"mrse={avg_mrse / (i_batch + 1):.4f} psnr={avg_psnr / (i_batch + 1):.4f} ssim={avg_ssim / (i_batch + 1):.4f} "
+                        f"val_time={end - start:.2f}s"
+                    )
             G.train()
 
             avg_mrse /= val_num_samples
             avg_psnr /= val_num_samples
             avg_ssim /= val_num_samples
-            print(
-                f"\r\t-Validation: {epoch + 1} \tTook: {int(end - start)} seconds "
-                f"\tAvg MRSE: {avg_mrse:.4f} \tAvg PSNR: {avg_psnr:.4f} \tAvg 1-SSIM: {1 - avg_ssim:.4f}",
-                flush=True,
+            logger.info(
+                f"[Val] epoch={epoch + 1} summary: avg_mrse={avg_mrse:.4f} avg_psnr={avg_psnr:.4f} avg_1-ssim={1 - avg_ssim:.4f} time={int(end - start)}s"
             )
 
             # Save evaluation results

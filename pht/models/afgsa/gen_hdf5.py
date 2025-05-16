@@ -5,7 +5,7 @@ import numpy as np
 import h5py
 from multiprocessing import Queue, Process, Value
 import multiprocessing
-
+from pht.logger import logger
 
 class Hdf5Constructor:
     def __init__(self, data_path, save_path, patch_size, num_patches, seed, train_val_ratio, scale=1.0, noisy_spp=32, gt_spp=1024, deterministic=False):
@@ -25,13 +25,13 @@ class Hdf5Constructor:
         self.paths = []
 
     def construct_hdf5(self):
-        print("Constructing data set (hdf5)")
+        logger.info("Constructing data set (hdf5)")
         self.get_exr_paths()
         self.get_cropped_patches()
-        print("Constructing data set (hdf5): done")
+        logger.info("Constructing data set (hdf5): done")
 
     def get_exr_paths(self):
-        print("\r\t-Get exr paths", end="")
+        logger.info("Get exr paths")
         self.noisy_path = os.path.join(self.data_path, f"{self.noisy_spp}spp")
         self.gt_path = os.path.join(self.data_path, f"{self.gt_spp}spp")
         for root, dirs, files in os.walk(self.gt_path):
@@ -56,14 +56,14 @@ class Hdf5Constructor:
 
         self.paths = [(e, g) for e, g in zip(self.exr_paths, self.gt_paths)]
         random.shuffle(self.paths)
-        print("\r\t-Get exr paths: done", end='')
+        logger.info("Get exr paths: done")
 
 
     def worker(self, worker_id, queues, path_mapping, name_shape_mapping, lock, v):
         rng = random.Random(self.seed + worker_id) if self.deterministic else random.Random()
         while not queues[0].empty() or not queues[1].empty():
             v.value += 1
-            print("\r\t-Generating patches: %d / %d" % (v.value, len(self.paths)-3), end='')
+            logger.info(f"Generating patches: {v.value} / {len(self.paths)-3}")
             if not queues[0].empty():
                 path = queues[0].get()
                 dataset = 'train'
@@ -98,7 +98,7 @@ class Hdf5Constructor:
             else:
                 queues[1].put(self.paths[i])
         # initiate h5py files
-        print("\n\r\t-Initiating h5py files", end='')
+        logger.info("Initiating h5py files")
         for i, n in enumerate(['train', 'val']):
             with h5py.File(path_mapping[n], 'w') as hf:
                 cropped, patches = get_cropped_patches(self.paths[i][0], self.paths[i][1], self.patch_size,
@@ -108,7 +108,7 @@ class Hdf5Constructor:
                     temp = np.array([c[key] for c in cropped])
                     hf.create_dataset(key, data=temp, maxshape=name_shape_mapping[key], compression="gzip",
                                       chunks=True)
-        print("\r\t-Initiating h5py files: done")
+        logger.info("Initiating h5py files: done")
 
         # start processes
         lock = multiprocessing.Lock()  # to ensure only one process writes to the file at once
@@ -120,6 +120,6 @@ class Hdf5Constructor:
         for p in pool:
             p.join()
 
-        print("\r\t-Generating patches: done")
+        logger.info("Generating patches: done")
 
 

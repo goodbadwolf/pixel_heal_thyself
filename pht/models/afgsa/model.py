@@ -9,16 +9,15 @@ from torch.utils.checkpoint import checkpoint
 from einops import rearrange, repeat
 from hilbertcurve.hilbertcurve import HilbertCurve
 
+from pht.logger import logger
 from pht.models.afgsa.film import FiLM
 
 
 def print_model_structure(model):
-    return
     blank = ' '
-    print('\t '+'-' * 95)
-    print('\t ' + '|' + ' ' * 13 + 'weight name' + ' ' * 13 + '|' + ' ' * 15 + 'weight shape' + ' ' * 15 + '|'
-          + ' ' * 3 + 'number' + ' ' * 3 + '|')
-    print('\t ' + '-' * 95)
+    logger.debug(f'\t {'-' * 95}')
+    logger.debug(f"\t |{' ' * 13 + 'weight name' + ' ' * 13}|{' ' * 15 + 'weight shape' + ' ' * 15}|{' ' * 3 + 'number' + ' ' * 3}|")
+    logger.debug(f'\t {'-' * 95}')
     num_para = 0
 
     for index, (key, w_variable) in enumerate(model.named_parameters()):
@@ -39,11 +38,11 @@ def print_model_structure(model):
         if len(str_num) <= 10:
             str_num = str_num + (10 - len(str_num)) * blank
 
-        print('\t ' + '| {} | {} | {} |'.format(key, shape, str_num))
-    print('\t ' + '-' * 95)
-    print('\t ' + 'Total number of parameters: ' + str(num_para))
-    print('\t CUDA: ' + str(next(model.parameters()).is_cuda))
-    print('\t ' + '-' * 95 + '\n')
+        logger.debug(f'\t | {key} | {shape} | {str_num} |')
+    logger.debug(f'\t {'-' * 95}')
+    logger.debug(f'\t Total number of parameters: {num_para}')
+    logger.debug(f'\t CUDA: {next(model.parameters()).is_cuda}')
+    logger.debug(f'\t {'-' * 95}\n')
 
 
 def norm(norm_type, out_ch):
