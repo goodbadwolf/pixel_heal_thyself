@@ -24,13 +24,69 @@ dependencies = [
     "torchvision>=0.21.0",
 ]
 
+[dependency-groups]
+dev = ["pytest>=8.3.5"]
+
 [[tool.uv.index]]
 name = "pytorch-cu126"
 url = "https://download.pytorch.org/whl/cu126"
 explicit = true
 
-[tool.ruff]
-exclude = ["pht/models/afgsa/**"]
+[tool.ruff.lint]
+select = [
+    "F",
+    "E",
+    "W",
+    "C90",
+    "I",
+    "N",
+    "D",
+    "UP",
+    "YTT",
+    "ANN",
+    "B",
+    "A",
+    "COM",
+    "C4",
+    "DTZ",
+    "ISC",
+    "ICN",
+    "INP",
+    "PIE",
+    "PT",
+    "RET",
+    "SIM",
+    "TID",
+    "ARG",
+    "PLC",
+    "PLE",
+    "PLR",
+    "PLW",
+    "RUF",
+]
+ignore = [
+    "D105",
+    "D107",
+    "D203",
+    "D212",
+    "UP006",
+    "UP007",
+    "D400",
+    "D406",
+    "D407",
+    "PLC1901",
+    "UP035",
+]
+unfixable = ["F401", "F841"]
 
-[dependency-groups]
-dev = ["pytest>=8.3.5"]
+[tool.ruff.lint.per-file-ignores]
+"test_*.py" = ["ANN003", "D101", "D103"]
+
+[tool.ruff.lint.pyupgrade]
+keep-runtime-typing = true
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 120
+
+[tool.ruff.lint.flake8-annotations]
+suppress-dummy-args = true
