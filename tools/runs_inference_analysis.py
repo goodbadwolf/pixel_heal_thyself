@@ -339,7 +339,7 @@ def create_dataset_comparison_plot_summary(
     # Metric info for all three metrics
     metrics = ["rmse", "psnr", "ssim"]
     metric_names = {"rmse": "RMSE", "psnr": "PSNR", "ssim": "SSIM"}
-    better_is_higher = {"rmse": False, "psnr": True, "ssim": True}
+    better_is_higher = {"rmse": False, "psnr": True, "ssim": True}  # noqa: F841
 
     # Custom colors for more visual appeal
     baseline_color = "#3366CC"  # Blue
@@ -397,7 +397,7 @@ def create_dataset_comparison_plot_summary(
 
         # Plot means with enhanced styling
         x = np.arange(len(all_datasets))
-        width = 0.3  # Slightly wider bars for better visibility
+        width = 0.28
 
         # Bar plot: absolute values with enhanced styling
         baseline_bars = ax.bar(
@@ -426,28 +426,32 @@ def create_dataset_comparison_plot_summary(
         # Format value labels based on metric
         if metric == "rmse":
             # For RMSE values which are small numbers, use scientific notation
-            formatter = lambda x: f"{x * 10**4:.2f}×$10^{{-4}}$"
+            def metric_formatter(x):
+                return f"{x * 10**4:.2f}"
+
             ax.yaxis.set_major_formatter(
                 plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
             )
             ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12, labelpad=10)
         else:
             # For PSNR and SSIM, use regular decimal format
-            formatter = lambda x: f"{x:.3f}"
+            def metric_formatter(x):
+                return f"{x:.3f}"
+
             ax.set_ylabel(metric.upper(), fontsize=12, labelpad=10)
 
         # Add value labels on bars with enhanced styling
         for bar in baseline_bars:
-            height = bar.get_height()
-            if not np.isnan(height):
+            value = bar.get_height()
+            if not np.isnan(value):
                 ax.annotate(
-                    formatter(height),
-                    xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 4),
+                    metric_formatter(value),
+                    xy=(bar.get_x() + bar.get_width() / 2, value),
+                    xytext=(0, 8),
                     textcoords="offset points",
                     ha="center",
                     va="bottom",
-                    fontsize=9,
+                    fontsize=7,
                     fontweight="bold",
                     color="#333333",
                     bbox=dict(
@@ -461,16 +465,17 @@ def create_dataset_comparison_plot_summary(
                 )
 
         for bar in variant_bars:
-            height = bar.get_height()
-            if not np.isnan(height):
+            value = bar.get_height()
+            height = value
+            if not np.isnan(value):
                 ax.annotate(
-                    formatter(height),
+                    metric_formatter(value),
                     xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 4),
+                    xytext=(0, 8),
                     textcoords="offset points",
                     ha="center",
                     va="bottom",
-                    fontsize=9,
+                    fontsize=7,
                     fontweight="bold",
                     color="#333333",
                     bbox=dict(
@@ -496,15 +501,26 @@ def create_dataset_comparison_plot_summary(
             f"{metric_names[metric]} by Dataset", fontsize=14, fontweight="bold", pad=15
         )
         ax.set_xticks(x)
-        ax.set_xticklabels(all_datasets, rotation=0, ha="center", fontweight="semibold")
+        ax.set_xticklabels(
+            all_datasets, ha="center", fontweight="semibold", rotation=25
+        )
 
         # Set y-axis limits appropriately
         if metric == "rmse":
-            y_min = 0
-            y_max = (
-                max([m for m in baseline_means + variant_means if not np.isnan(m)])
-                * 1.15
-            )
+            use_new_rmse_y_limits = True
+            if use_new_rmse_y_limits:
+                min_val = 0
+                max_val = max(
+                    [m for m in baseline_means + variant_means if not np.isnan(m)]
+                )
+                y_min = min_val * 0.95
+                y_max = max_val * 1.2
+            else:
+                y_min = 0
+                y_max = (
+                    max([m for m in baseline_means + variant_means if not np.isnan(m)])
+                    * 1.15
+                )
             ax.set_ylim([y_min, y_max])
         elif metric == "psnr":
             y_min = (
@@ -521,25 +537,30 @@ def create_dataset_comparison_plot_summary(
             min_val = min(
                 [m for m in baseline_means + variant_means if not np.isnan(m)]
             )
-            y_min = max(0.9 * min_val, 0)
-            y_max = 1.0
-            ax.set_ylim([y_min, y_max])
+            use_new_ssim_y_limits = True
+            if use_new_ssim_y_limits:
+                y_min = 0.9
+                y_max = 1.0
+                ax.set_ylim(bottom=y_min, top=y_max)
+            else:
+                y_min = max(0.9 * min_val, 0)
+                y_max = 1.0
+                ax.set_ylim(bottom=y_min, top=y_max)
 
         # Enhanced legend with better formatting
-        if i == 0:  # Only add legend to first plot
-            legend = ax.legend(
-                loc="upper right",
-                frameon=True,
-                fancybox=True,
-                framealpha=0.9,
-                edgecolor="#cccccc",
-                fontsize=10,
-            )
-            legend.get_frame().set_linewidth(0.8)
+        legend = ax.legend(
+            loc="upper left",
+            bbox_to_anchor=(0, 1),
+            frameon=True,
+            fancybox=True,
+            framealpha=0.9,
+            edgecolor="#cccccc",
+            fontsize=10,
+        )
+        legend.get_frame().set_linewidth(0.8)
 
-    # Adjust layout for better spacing
     plt.tight_layout()
-    plt.subplots_adjust(wspace=0.15)
+    plt.subplots_adjust(wspace=0.20)
 
     # Add a nicer title
     plt.suptitle(
@@ -548,6 +569,16 @@ def create_dataset_comparison_plot_summary(
         y=1.02,
         fontweight="bold",
         color="#333333",
+    )
+
+    # Add footnote for dataset suffixes
+    plt.figtext(
+        0.5,
+        -0.05,
+        "* = training dataset, † = test dataset",
+        ha="center",
+        fontsize=10,
+        color="#555555",
     )
 
     # Save figure with high quality
@@ -588,7 +619,7 @@ def create_dataset_comparison_plot(
         "ssim": "SSIM (higher is better)",
     }
 
-    title = metric_names[metric]
+    _title = metric_names[metric]
     better_is_higher = metric != "rmse"  # For PSNR and SSIM, higher is better
 
     for dataset in all_datasets:
@@ -1176,10 +1207,6 @@ def main(args):
             data_dict["datasets"][dataset]["psnr"].append(psnr)
             data_dict["datasets"][dataset]["ssim"].append(ssim)
             data_dict["datasets"][dataset]["files"].append(file)
-
-        adjust_dataset_names(baseline_data)
-        adjust_dataset_names(variant_data)
-
     else:
         # Process baseline directories
         baseline_data = {"model": "Baseline", "datasets": {}}
