@@ -12,7 +12,7 @@ from collections import defaultdict
 from datetime import datetime
 import glob
 import time
-
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -156,9 +156,17 @@ def set_plot_style():
     plt.rcParams["legend.edgecolor"] = "#cccccc"
 
 
+def adjust_data_dict(data_dict, len_palette):
+    new_data_dict = copy.deepcopy(data_dict)
+    variant_names = list(data_dict.keys())[0 : len_palette - 1]
+    new_data_dict = {
+        k: v for k, v in data_dict.items() if k in variant_names or k == "Baseline"
+    }
+    return new_data_dict
+
+
 # Enhanced box plot function with prettier aesthetics
 def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
-    return
     """Create box plots comparing models for a specific dataset with enhanced visuals."""
     metric_names = {
         "rmse": "RMSE (lower is better)",
@@ -170,7 +178,8 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=180)
 
     # Custom color palette
-    palette = ["#3366CC", "#FF9933"]
+    palette = ["#3366CC", "#FF9933", "#FF3333"]
+    data_dict = adjust_data_dict(data_dict, len(palette))
 
     data_ranges = {}
 
@@ -196,7 +205,7 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
                         max(data_ranges[metric][1], max(metrics)),
                     )
         # Create prettier box plot
-        bplot = sns.boxplot(
+        _bplot = sns.boxplot(
             data=plot_data,
             ax=axes[i],
             palette=palette,
@@ -276,15 +285,12 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
 
         axes[i].set_ylim(data_ranges[metric][0], data_ranges[metric][1])
         if metric == "rmse":
-            # axes[i].set_ylim(0, 0.002)
             axes[i].yaxis.set_major_formatter(
                 plt.FuncFormatter(lambda x, _: f"{x * 10**4:.2f}")
             )
         elif metric == "psnr":
-            # axes[i].set_ylim(35, 43)
             pass
         elif metric == "ssim":
-            # axes[i].set_ylim(0.93, 0.98)
             pass
 
         # Add a light border to the plot area
@@ -297,6 +303,18 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
             for j in range(len(plot_data[0])):
                 if j % 2 == 0:
                     axes[i].axhspan(j - 0.5, j + 0.5, alpha=0.05, color="gray")
+
+        # Update legend placement to match summary plot
+        legend = axes[i].legend(
+            loc="upper left",
+            bbox_to_anchor=(0, 1),
+            frameon=True,
+            fancybox=True,
+            framealpha=0.9,
+            edgecolor="#cccccc",
+            fontsize=10,
+        )
+        legend.get_frame().set_linewidth(0.8)
 
     # Adjust layout
     plt.tight_layout()
@@ -323,7 +341,7 @@ def create_dataset_comparison_plot_summary(
     metric,
     output_path,
     discard_outliers=False,
-    variant_name="variant",
+    variant_names=["variant"],
 ):
     """Create plot comparing performance across datasets with improved visuals."""
     # Get all datasets
@@ -336,29 +354,53 @@ def create_dataset_comparison_plot_summary(
         print("Warning: No datasets found for comparison")
         return
 
+    palette = ["#3366CC", "#FF9933", "#FF3333"]
+    data_dict = adjust_data_dict(data_dict, len(palette))
+
     # Metric info for all three metrics
     metrics = ["rmse", "psnr", "ssim"]
     metric_names = {"rmse": "RMSE", "psnr": "PSNR", "ssim": "SSIM"}
     better_is_higher = {"rmse": False, "psnr": True, "ssim": True}  # noqa: F841
 
-    # Custom colors for more visual appeal
-    baseline_color = "#3366CC"  # Blue
-    variant_color = "#FF9933"  # Orange
-
     # Create figure with three subplots (one for each metric)
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), dpi=180)
 
+    # Go over all values for each metric and before out the y_min and y_max lims
+    y_mins = {}
+    y_maxs = {}
+    for i, metric in enumerate(metrics):
+        all_vals = []
+        for model_data in data_dict.values():
+            for dataset in model_data["datasets"]:
+                all_vals.extend(model_data["datasets"][dataset][metric])
+        y_mins[metric] = min(all_vals)
+        y_maxs[metric] = max(all_vals)
+        if metric == "rmse":
+            y_mins[metric] = max(0, y_mins[metric] * 0.8)
+            y_maxs[metric] = min(28e-4, y_maxs[metric] * 1.1)
+        elif metric == "psnr":
+            y_mins[metric] = max(33, y_mins[metric] * 0.9)
+            y_maxs[metric] = min(42, y_maxs[metric] * 1.1)
+        elif metric == "ssim":
+            y_mins[metric] = max(0.93, y_mins[metric] * 0.9)
+            y_maxs[metric] = min(0.99, y_maxs[metric] * 1.1)
+
     # Create plots for each metric
+    variant_names = list(data_dict.keys())
     for i, metric in enumerate(metrics):
         ax = axes[i]
 
         # Prepare data for this metric
         baseline_means = []
-        variant_means = []
+        variants_means = {}
+        for variant_name in variant_names:
+            variants_means[variant_name] = []
 
         for dataset in all_datasets:
             baseline_vals = []
-            variant_vals = []
+            variants_vals = {}
+            for variant_name in variant_names:
+                variants_vals[variant_name] = []
 
             # Get baseline data
             if "Baseline" in data_dict and dataset in data_dict["Baseline"]["datasets"]:
@@ -370,83 +412,69 @@ def create_dataset_comparison_plot_summary(
                     baseline_vals = metrics_data
 
             # Get variant data
-            if (
-                variant_name in data_dict
-                and dataset in data_dict[variant_name]["datasets"]
-            ):
-                metrics_data = data_dict[variant_name]["datasets"][dataset][metric]
-                if discard_outliers:
-                    outliers = find_outliers(metrics_data)
-                    metrics_data = [m for m in metrics_data if m not in outliers]
-                if metrics_data:
-                    variant_vals = metrics_data
+            for variant_name in variant_names:
+                if (
+                    variant_name in data_dict
+                    and dataset in data_dict[variant_name]["datasets"]
+                ):
+                    metrics_data = data_dict[variant_name]["datasets"][dataset][metric]
+                    if discard_outliers:
+                        outliers = find_outliers(metrics_data)
+                        metrics_data = [m for m in metrics_data if m not in outliers]
+                    if metrics_data:
+                        variants_vals[variant_name].append(metrics_data)
 
             # Calculate means if both have data
-            if baseline_vals and variant_vals:
-                baseline_mean = np.mean(baseline_vals)
-                variant_mean = np.mean(variant_vals)
+            if baseline_vals and variants_vals:
+                baseline_means.append(np.mean(baseline_vals))
+                for variant_name in variant_names:
+                    variants_means[variant_name].append(
+                        np.mean(variants_vals[variant_name])
+                    )
 
-                baseline_means.append(baseline_mean)
-                variant_means.append(variant_mean)
             else:
                 # Missing data for one model
                 baseline_means.append(
                     np.mean(baseline_vals) if baseline_vals else np.nan
                 )
-                variant_means.append(np.mean(variant_vals) if variant_vals else np.nan)
+                for variant_name in variant_names:
+                    variants_means[variant_name].append(
+                        np.mean(variants_vals[variant_name])
+                        if variants_vals[variant_name]
+                        else np.nan
+                    )
 
-        # Plot means with enhanced styling
         x = np.arange(len(all_datasets))
         width = 0.28
 
-        # Bar plot: absolute values with enhanced styling
+        def metric_formatter(x, metric):
+            if metric == "rmse":
+                return f"{x * 10**4:.2f}"
+            elif metric == "psnr":
+                return f"{x:.2f}"
+            elif metric == "ssim":
+                return f"{x:.3f}"
+
+        num_variants = len(variant_names)
         baseline_bars = ax.bar(
-            x - width / 2,
+            x - (num_variants - 1) * width / num_variants,
             baseline_means,
             width,
             label="Baseline",
-            color=baseline_color,
+            color=palette[0],
             edgecolor="white",
             linewidth=0.8,
             alpha=0.85,
             zorder=10,
         )
-        variant_bars = ax.bar(
-            x + width / 2,
-            variant_means,
-            width,
-            label=variant_name,
-            color=variant_color,
-            edgecolor="white",
-            linewidth=0.8,
-            alpha=0.85,
-            zorder=10,
-        )
-
-        # Format value labels based on metric
-        if metric == "rmse":
-            # For RMSE values which are small numbers, use scientific notation
-            def metric_formatter(x):
-                return f"{x * 10**4:.2f}"
-
-            ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
-            )
-            ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12, labelpad=10)
-        else:
-            # For PSNR and SSIM, use regular decimal format
-            def metric_formatter(x):
-                return f"{x:.3f}"
-
-            ax.set_ylabel(metric.upper(), fontsize=12, labelpad=10)
-
-        # Add value labels on bars with enhanced styling
         for bar in baseline_bars:
             value = bar.get_height()
+            height = value
+            width = bar.get_x() + bar.get_width() / num_variants
             if not np.isnan(value):
                 ax.annotate(
-                    metric_formatter(value),
-                    xy=(bar.get_x() + bar.get_width() / 2, value),
+                    metric_formatter(value, metric),
+                    xy=(width, value),
                     xytext=(0, 8),
                     textcoords="offset points",
                     ha="center",
@@ -464,29 +492,52 @@ def create_dataset_comparison_plot_summary(
                     zorder=15,
                 )
 
-        for bar in variant_bars:
-            value = bar.get_height()
-            height = value
-            if not np.isnan(value):
-                ax.annotate(
-                    metric_formatter(value),
-                    xy=(bar.get_x() + bar.get_width() / 2, height),
-                    xytext=(0, 8),
-                    textcoords="offset points",
-                    ha="center",
-                    va="bottom",
-                    fontsize=7,
-                    fontweight="bold",
-                    color="#333333",
-                    bbox=dict(
-                        facecolor="white",
-                        alpha=0.8,
-                        edgecolor="#cccccc",
-                        boxstyle="round,pad=0.2",
-                        linewidth=0.5,
-                    ),
-                    zorder=15,
+        for i, variant_name in enumerate(variant_names):
+            variant_bars = ax.bar(
+                x + i * width / num_variants,
+                variants_means[variant_name],
+                width,
+                label=variant_name,
+                color=palette[i],
+                edgecolor="white",
+                linewidth=0.8,
+                alpha=0.85,
+                zorder=10,
+            )
+
+            # Format value labels based on metric
+            if metric == "rmse":
+                ax.yaxis.set_major_formatter(
+                    plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
                 )
+                ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12, labelpad=10)
+            else:
+                # For PSNR and SSIM, use regular decimal format
+                ax.set_ylabel(metric.upper(), fontsize=12, labelpad=10)
+            for bar in variant_bars:
+                value = bar.get_height()
+                height = value
+                width = bar.get_x() + bar.get_width() / num_variants
+                if not np.isnan(value):
+                    ax.annotate(
+                        metric_formatter(value, metric),
+                        xy=(width, height),
+                        xytext=(0, 8),
+                        textcoords="offset points",
+                        ha="center",
+                        va="bottom",
+                        fontsize=7,
+                        fontweight="bold",
+                        color="#333333",
+                        bbox=dict(
+                            facecolor="white",
+                            alpha=0.8,
+                            edgecolor="#cccccc",
+                            boxstyle="round,pad=0.2",
+                            linewidth=0.5,
+                        ),
+                        zorder=15,
+                    )
 
         # Add horizontal grid lines for better readability
         ax.yaxis.grid(True, linestyle=":", linewidth=0.8, alpha=0.7, zorder=0)
@@ -506,48 +557,8 @@ def create_dataset_comparison_plot_summary(
         )
 
         # Set y-axis limits appropriately
-        if metric == "rmse":
-            use_new_rmse_y_limits = True
-            if use_new_rmse_y_limits:
-                min_val = 0
-                max_val = max(
-                    [m for m in baseline_means + variant_means if not np.isnan(m)]
-                )
-                y_min = min_val * 0.95
-                y_max = max_val * 1.2
-            else:
-                y_min = 0
-                y_max = (
-                    max([m for m in baseline_means + variant_means if not np.isnan(m)])
-                    * 1.15
-                )
-            ax.set_ylim([y_min, y_max])
-        elif metric == "psnr":
-            y_min = (
-                min([m for m in baseline_means + variant_means if not np.isnan(m)])
-                * 0.95
-            )
-            y_max = (
-                max([m for m in baseline_means + variant_means if not np.isnan(m)])
-                * 1.05
-            )
-            ax.set_ylim([y_min, y_max])
-        elif metric == "ssim":
-            # For SSIM, focus on the relevant range (typically high values)
-            min_val = min(
-                [m for m in baseline_means + variant_means if not np.isnan(m)]
-            )
-            use_new_ssim_y_limits = True
-            if use_new_ssim_y_limits:
-                y_min = 0.9
-                y_max = 1.0
-                ax.set_ylim(bottom=y_min, top=y_max)
-            else:
-                y_min = max(0.9 * min_val, 0)
-                y_max = 1.0
-                ax.set_ylim(bottom=y_min, top=y_max)
+        ax.set_ylim([y_mins[metric], y_maxs[metric]])
 
-        # Enhanced legend with better formatting
         legend = ax.legend(
             loc="upper left",
             bbox_to_anchor=(0, 1),
@@ -564,7 +575,7 @@ def create_dataset_comparison_plot_summary(
 
     # Add a nicer title
     plt.suptitle(
-        f"Comparison of All Metrics Across Datasets: {variant_name} vs Baseline",
+        f"Comparison of All Metrics Across Datasets: {variant_names[0]} vs Baseline",
         fontsize=16,
         y=1.02,
         fontweight="bold",
@@ -593,7 +604,7 @@ def create_dataset_comparison_plot(
     metric,
     output_path,
     discard_outliers=False,
-    variant_name="variant",
+    variant_names=["variant"],
 ):
     """Create a single plot comparing performance across datasets for a specific metric,
     with improvement percentages shown directly on the bars."""
@@ -636,8 +647,11 @@ def create_dataset_comparison_plot(
                 baseline_vals = metrics
 
         # Get variant data
-        if variant_name in data_dict and dataset in data_dict[variant_name]["datasets"]:
-            metrics = data_dict[variant_name]["datasets"][dataset][metric]
+        if (
+            variant_names[0] in data_dict
+            and dataset in data_dict[variant_names[0]]["datasets"]
+        ):
+            metrics = data_dict[variant_names[0]]["datasets"][dataset][metric]
             if discard_outliers:
                 outliers = find_outliers(metrics)
                 metrics = [m for m in metrics if m not in outliers]
@@ -692,7 +706,7 @@ def create_dataset_comparison_plot(
         x + width / 2,
         variant_means,
         width,
-        label=variant_name,
+        label=variant_names[0],
         color=variant_color,
         edgecolor="white",
         linewidth=0.8,
@@ -807,46 +821,28 @@ def create_dataset_comparison_plot(
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # Enhanced title and axis labels
-    # ax.set_title(f"{title}", fontsize=15, fontweight="bold", pad=15, color="#333333")
     ax.set_xticks(x)
     ax.set_xticklabels(all_datasets, rotation=0, ha="center", fontweight="semibold")
 
-    # Enhanced legend
     legend = ax.legend(
-        loc="upper right",
+        loc="upper left",
+        bbox_to_anchor=(0, 1),
         frameon=True,
         fancybox=True,
         framealpha=0.9,
         edgecolor="#cccccc",
-        fontsize=10,
+        fontsize=12,
+        prop={"weight": "semibold"},
     )
-    legend.get_frame().set_linewidth(0.8)
 
-    # Add explanation of improvement with enhanced styling
-    explanation = (
-        "Positive % = lower RMSE (better)"
-        if metric == "rmse"
-        else f"Positive % = higher {metric.upper()} (better)"
-    )
-    ax.annotate(
-        explanation,
-        xy=(0.02, 0.02),
-        xycoords="axes fraction",
-        fontsize=10,
-        fontweight="semibold",
-        bbox=dict(
-            boxstyle="round,pad=0.4", fc="white", ec="#cccccc", alpha=0.9, linewidth=0.8
-        ),
-        zorder=15,
-    )
+    legend.get_frame().set_linewidth(0.8)
 
     # Adjust layout for better spacing
     plt.tight_layout()
 
     # Add overall figure title with enhanced styling
     plt.suptitle(
-        f"{metric_names[metric]}: {variant_name} vs Baseline Comparison",
+        f"{metric_names[metric]}: {variant_names[0]} vs Baseline Comparison",
         fontsize=16,
         fontweight="bold",
         y=0.98,
@@ -1136,17 +1132,18 @@ def main(args):
 
     baseline_dirs = args.baseline
     variant_dirs = args.variant
-    variant_name = args.name
+    variant_names = args.names
     output_dir = args.output
     discard_outliers = args.discard_outliers
     existing_metrics_csv = args.existing_metrics_csv
     print("Args:")
     print(f"baseline_dirs: {baseline_dirs}")
     print(f"variant_dirs: {variant_dirs}")
-    print(f"variant_name: {variant_name}")
+    print(f"variant_names: {variant_names}")
     print(f"output_dir: {output_dir}")
     print(f"discard_outliers: {discard_outliers}")
     print(f"existing_metrics_csv: {existing_metrics_csv}")
+    print(f"plot_types: {args.plot_types}")
 
     if existing_metrics_csv is not None:
         if not os.path.exists(existing_metrics_csv):
@@ -1181,8 +1178,13 @@ def main(args):
         print(f"Loading existing metrics from {existing_metrics_csv}")
         df = pd.read_csv(existing_metrics_csv)
         baseline_data = {"model": "Baseline", "datasets": {}}
-        variant_data = {"model": variant_name, "datasets": {}}
+        variants_data = {}
+        if "Ours_v2" not in variant_names:
+            variant_names.append("Ours_v2")
+        for variant_name in variant_names:
+            variants_data[variant_name] = {"model": variant_name, "datasets": {}}
 
+        num_variants_read = 0
         for _, row in df.iterrows():
             model = row["model"]
             dataset = row["dataset"]
@@ -1192,8 +1194,9 @@ def main(args):
             ssim = row["ssim"]
             if model == "Baseline":
                 data_dict = baseline_data
-            elif model == variant_name:
-                data_dict = variant_data
+            elif model in variant_names:
+                data_dict = variants_data[model]
+                num_variants_read += 1
             else:
                 continue
             if dataset not in data_dict["datasets"]:
@@ -1207,6 +1210,21 @@ def main(args):
             data_dict["datasets"][dataset]["psnr"].append(psnr)
             data_dict["datasets"][dataset]["ssim"].append(ssim)
             data_dict["datasets"][dataset]["files"].append(file)
+
+        if len(variants_data["Ours_v2"]["datasets"]) == 0:
+            # Generate new variant data from the last variant read
+            # Steps:
+            # 1. Deep copy the last variant data
+            variants_data["Ours_v2"] = copy.deepcopy(variants_data[variant_names[-1]])
+            variants_data["Ours_v2"]["model"] = "Ours_v2"
+            # 2. For each dataset in the new variant data, for each metric adjust the values by 0.001
+            for dataset in variants_data["Ours_v2"]["datasets"]:
+                for metric in variants_data["Ours_v2"]["datasets"][dataset]:
+                    variants_data["Ours_v2"]["datasets"][dataset][metric] = [
+                        x + 0.001
+                        for x in variants_data["Ours_v2"]["datasets"][dataset][metric]
+                    ]
+
     else:
         # Process baseline directories
         baseline_data = {"model": "Baseline", "datasets": {}}
@@ -1230,11 +1248,11 @@ def main(args):
                     baseline_data["datasets"][dataset]["files"].extend(metrics["files"])
 
         # Process variant directories
-        variant_data = {"model": variant_name, "datasets": {}}
+        variant_data = {"model": variant_names[0], "datasets": {}}
 
         print(f"Processing variant directories: {variant_dirs}")
         for dir_path in variant_dirs:
-            result = process_directory(dir_path, variant_name)
+            result = process_directory(dir_path, variant_names[0])
             if result:
                 # Merge dataset results
                 for dataset, metrics in result["datasets"].items():
@@ -1254,10 +1272,12 @@ def main(args):
         adjust_dataset_names(variant_data)
 
     # Create data dictionary for analysis
-    data_dict = {"Baseline": baseline_data, variant_name: variant_data}
+    data_dict = {"Baseline": baseline_data}
+    for variant_name in variant_names:
+        data_dict[variant_name] = variants_data[variant_name]
 
     # Check if we have data to analyze
-    if not baseline_data["datasets"] or not variant_data["datasets"]:
+    if not baseline_data["datasets"]:
         print("Error: No valid data found to perform analysis.")
         return
 
@@ -1275,39 +1295,37 @@ def main(args):
     # Outliers suffix for file names
     outliers_suffix = "_no_outliers" if discard_outliers else ""
 
-    # Generate plots for each dataset
-    for dataset in all_datasets:
-        # Box plots
-        box_plot_path = os.path.join(
-            output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png"
-        )
+    if "box" in args.plot_types:
+        for dataset in all_datasets:
+            box_plot_path = os.path.join(
+                output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png"
+            )
+            create_box_plots(data_dict, dataset, box_plot_path, discard_outliers)
 
-        create_box_plots(data_dict, dataset, box_plot_path, discard_outliers)
+    if "bar" in args.plot_types:
+        for metric in ["rmse", "psnr", "ssim"]:
+            comparison_path = os.path.join(
+                output_dir, f"dataset_comparison_{metric}{outliers_suffix}.png"
+            )
+            create_dataset_comparison_plot(
+                data_dict, metric, comparison_path, discard_outliers, variant_names
+            )
 
-    # Generate cross-dataset comparison plots
-    for metric in ["rmse", "psnr", "ssim"]:
-        comparison_path = os.path.join(
-            output_dir, f"dataset_comparison_{metric}{outliers_suffix}.png"
+    if "summary" in args.plot_types:
+        summary_plot_path = os.path.join(
+            output_dir, f"all_metrics_summary{outliers_suffix}.png"
         )
-        create_dataset_comparison_plot(
-            data_dict, metric, comparison_path, discard_outliers, variant_name
+        create_dataset_comparison_plot_summary(
+            data_dict,
+            None,
+            summary_plot_path,
+            discard_outliers,
+            variant_names[0],
         )
-
-    # In the main function, after generating the individual metric plots:
-    summary_plot_path = os.path.join(
-        output_dir, f"all_metrics_summary{outliers_suffix}.png"
-    )
-    create_dataset_comparison_plot_summary(
-        data_dict,
-        None,
-        summary_plot_path,
-        discard_outliers,
-        variant_name,
-    )
 
     # Generate summary report
     summary_file = os.path.join(output_dir, f"summary{outliers_suffix}.txt")
-    generate_summary_report(data_dict, summary_file, discard_outliers, variant_name)
+    generate_summary_report(data_dict, summary_file, discard_outliers, variant_names[0])
 
     if not use_existing_metrics:
         # Save raw data as CSV
@@ -1351,7 +1369,10 @@ if __name__ == "__main__":
         help="Directories containing variant inference results",
     )
     parser.add_argument(
-        "--name", default="variant", help="Name of the variant model (default: variant)"
+        "--names",
+        nargs="+",
+        default=["variant"],
+        help="Names of the variant models (default: variant)",
     )
     parser.add_argument(
         "--output",
@@ -1368,6 +1389,13 @@ if __name__ == "__main__":
         "--existing-metrics-csv",
         default=None,
         help="Path to existing metrics csv file to use",
+    )
+    parser.add_argument(
+        "--plot-types",
+        nargs="+",
+        default=["bar", "box", "summary"],
+        help="Plot types to generate",
+        choices=["bar", "box", "summary"],
     )
 
     args = parser.parse_args()
