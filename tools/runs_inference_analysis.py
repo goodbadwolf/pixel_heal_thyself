@@ -17,7 +17,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from matplotlib import patheffects as path_effects
 
 
 def find_evaluation_files(dir_path):
@@ -574,7 +573,7 @@ def create_dataset_comparison_plot(
     all_datasets = sorted(all_datasets)
 
     if not all_datasets:
-        print(f"Warning: No datasets found for comparison")
+        print("Warning: No datasets found for comparison")
         return
 
     # Prepare data for plotting
@@ -1101,51 +1100,38 @@ def generate_summary_report(
     print(f"Summary report saved to {output_file}")
 
 
-def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers):
+def main(args):
     """Main function to process directories and generate analysis."""
+
+    baseline_dirs = args.baseline
+    variant_dirs = args.variant
+    variant_name = args.name
+    output_dir = args.output
+    discard_outliers = args.discard_outliers
+    existing_metrics_csv = args.existing_metrics_csv
+    print("Args:")
+    print(f"baseline_dirs: {baseline_dirs}")
+    print(f"variant_dirs: {variant_dirs}")
+    print(f"variant_name: {variant_name}")
+    print(f"output_dir: {output_dir}")
+    print(f"discard_outliers: {discard_outliers}")
+    print(f"existing_metrics_csv: {existing_metrics_csv}")
+
+    if existing_metrics_csv is not None:
+        if not os.path.exists(existing_metrics_csv):
+            print(
+                f"Error: Existing metrics csv file {existing_metrics_csv} does not exist"
+            )
+            return
+        else:
+            use_existing_metrics = True
+    else:
+        use_existing_metrics = False
+
+    if use_existing_metrics:
+        output_dir = os.path.dirname(existing_metrics_csv)
+
     os.makedirs(output_dir, exist_ok=True)
-
-    # Process baseline directories
-    baseline_data = {"model": "Baseline", "datasets": {}}
-
-    print(f"Processing baseline directories: {baseline_dirs}")
-    for dir_path in baseline_dirs:
-        result = process_directory(dir_path, "Baseline")
-        if result:
-            # Merge dataset results
-            for dataset, metrics in result["datasets"].items():
-                if dataset not in baseline_data["datasets"]:
-                    baseline_data["datasets"][dataset] = {
-                        "rmse": [],
-                        "psnr": [],
-                        "ssim": [],
-                        "files": [],
-                    }
-                baseline_data["datasets"][dataset]["rmse"].extend(metrics["rmse"])
-                baseline_data["datasets"][dataset]["psnr"].extend(metrics["psnr"])
-                baseline_data["datasets"][dataset]["ssim"].extend(metrics["ssim"])
-                baseline_data["datasets"][dataset]["files"].extend(metrics["files"])
-
-    # Process variant directories
-    variant_data = {"model": variant_name, "datasets": {}}
-
-    print(f"Processing variant directories: {variant_dirs}")
-    for dir_path in variant_dirs:
-        result = process_directory(dir_path, variant_name)
-        if result:
-            # Merge dataset results
-            for dataset, metrics in result["datasets"].items():
-                if dataset not in variant_data["datasets"]:
-                    variant_data["datasets"][dataset] = {
-                        "rmse": [],
-                        "psnr": [],
-                        "ssim": [],
-                        "files": [],
-                    }
-                variant_data["datasets"][dataset]["rmse"].extend(metrics["rmse"])
-                variant_data["datasets"][dataset]["psnr"].extend(metrics["psnr"])
-                variant_data["datasets"][dataset]["ssim"].extend(metrics["ssim"])
-                variant_data["datasets"][dataset]["files"].extend(metrics["files"])
 
     def adjust_dataset_names(data_dict):
         training_datasets = ["fftle0", "fftle1", "taccturb0", "taccturb1"]
@@ -1160,8 +1146,85 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
                     dataset
                 )
 
-    adjust_dataset_names(baseline_data)
-    adjust_dataset_names(variant_data)
+    if use_existing_metrics:
+        print(f"Loading existing metrics from {existing_metrics_csv}")
+        df = pd.read_csv(existing_metrics_csv)
+        baseline_data = {"model": "Baseline", "datasets": {}}
+        variant_data = {"model": variant_name, "datasets": {}}
+
+        for _, row in df.iterrows():
+            model = row["model"]
+            dataset = row["dataset"]
+            file = row["file"]
+            rmse = row["rmse"]
+            psnr = row["psnr"]
+            ssim = row["ssim"]
+            if model == "Baseline":
+                data_dict = baseline_data
+            elif model == variant_name:
+                data_dict = variant_data
+            else:
+                continue
+            if dataset not in data_dict["datasets"]:
+                data_dict["datasets"][dataset] = {
+                    "rmse": [],
+                    "psnr": [],
+                    "ssim": [],
+                    "files": [],
+                }
+            data_dict["datasets"][dataset]["rmse"].append(rmse)
+            data_dict["datasets"][dataset]["psnr"].append(psnr)
+            data_dict["datasets"][dataset]["ssim"].append(ssim)
+            data_dict["datasets"][dataset]["files"].append(file)
+
+        adjust_dataset_names(baseline_data)
+        adjust_dataset_names(variant_data)
+
+    else:
+        # Process baseline directories
+        baseline_data = {"model": "Baseline", "datasets": {}}
+
+        print(f"Processing baseline directories: {baseline_dirs}")
+        for dir_path in baseline_dirs:
+            result = process_directory(dir_path, "Baseline")
+            if result:
+                # Merge dataset results
+                for dataset, metrics in result["datasets"].items():
+                    if dataset not in baseline_data["datasets"]:
+                        baseline_data["datasets"][dataset] = {
+                            "rmse": [],
+                            "psnr": [],
+                            "ssim": [],
+                            "files": [],
+                        }
+                    baseline_data["datasets"][dataset]["rmse"].extend(metrics["rmse"])
+                    baseline_data["datasets"][dataset]["psnr"].extend(metrics["psnr"])
+                    baseline_data["datasets"][dataset]["ssim"].extend(metrics["ssim"])
+                    baseline_data["datasets"][dataset]["files"].extend(metrics["files"])
+
+        # Process variant directories
+        variant_data = {"model": variant_name, "datasets": {}}
+
+        print(f"Processing variant directories: {variant_dirs}")
+        for dir_path in variant_dirs:
+            result = process_directory(dir_path, variant_name)
+            if result:
+                # Merge dataset results
+                for dataset, metrics in result["datasets"].items():
+                    if dataset not in variant_data["datasets"]:
+                        variant_data["datasets"][dataset] = {
+                            "rmse": [],
+                            "psnr": [],
+                            "ssim": [],
+                            "files": [],
+                        }
+                    variant_data["datasets"][dataset]["rmse"].extend(metrics["rmse"])
+                    variant_data["datasets"][dataset]["psnr"].extend(metrics["psnr"])
+                    variant_data["datasets"][dataset]["ssim"].extend(metrics["ssim"])
+                    variant_data["datasets"][dataset]["files"].extend(metrics["files"])
+
+        adjust_dataset_names(baseline_data)
+        adjust_dataset_names(variant_data)
 
     # Create data dictionary for analysis
     data_dict = {"Baseline": baseline_data, variant_name: variant_data}
@@ -1219,29 +1282,29 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
     summary_file = os.path.join(output_dir, f"summary{outliers_suffix}.txt")
     generate_summary_report(data_dict, summary_file, discard_outliers, variant_name)
 
-    # Save raw data as CSV
-    csv_file = os.path.join(output_dir, f"metrics{outliers_suffix}.csv")
+    if not use_existing_metrics:
+        # Save raw data as CSV
+        csv_file = os.path.join(output_dir, f"metrics{outliers_suffix}.csv")
 
-    # Create DataFrame from raw data
-    rows = []
+        # Create DataFrame from raw data
+        rows = []
 
-    for model_name, model_data in data_dict.items():
-        for dataset, metrics in model_data["datasets"].items():
-            for i in range(len(metrics["rmse"])):
-                rows.append(
-                    {
-                        "model": model_name,
-                        "dataset": dataset,
-                        "file": metrics["files"][i],
-                        "rmse": metrics["rmse"][i],
-                        "psnr": metrics["psnr"][i],
-                        "ssim": metrics["ssim"][i],
-                    }
-                )
-
-    df = pd.DataFrame(rows)
-    df.to_csv(csv_file, index=False)
-    print(f"Raw metrics saved to {csv_file}")
+        for model_name, model_data in data_dict.items():
+            for dataset, metrics in model_data["datasets"].items():
+                for i in range(len(metrics["rmse"])):
+                    rows.append(
+                        {
+                            "model": model_name,
+                            "dataset": dataset,
+                            "file": metrics["files"][i],
+                            "rmse": metrics["rmse"][i],
+                            "psnr": metrics["psnr"][i],
+                            "ssim": metrics["ssim"][i],
+                        }
+                    )
+        df = pd.DataFrame(rows)
+        df.to_csv(csv_file, index=False)
+        print(f"Raw metrics saved to {csv_file}")
 
 
 if __name__ == "__main__":
@@ -1274,6 +1337,11 @@ if __name__ == "__main__":
         default=False,
         help="Discard outliers from the analysis",
     )
+    parser.add_argument(
+        "--existing-metrics-csv",
+        default=None,
+        help="Path to existing metrics csv file to use",
+    )
 
     args = parser.parse_args()
-    main(args.baseline, args.variant, args.name, args.output, args.discard_outliers)
+    main(args)
