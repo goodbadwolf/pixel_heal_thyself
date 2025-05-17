@@ -1,7 +1,7 @@
 """Base configuration classes for PHT."""
 
 from dataclasses import dataclass, field
-from typing import List, Union
+from typing import Any, List, Union
 
 from omegaconf import DictConfig
 
@@ -30,7 +30,7 @@ class PatchesConfig:
 
     patch_size: int = 128
     num_patches: int = 400
-    dir: str = "${data.images.dir}/patches_${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}"
+    dir: str = ""
 
 
 @dataclass
@@ -88,8 +88,8 @@ class TrainerConfig:
     scheduler: SchedulerConfig = field(default_factory=SchedulerConfig)
 
     # Learning rates
-    lrG: float = 1e-4
-    lrD: float = 1e-4
+    lr_g: float = 1e-4
+    lr_d: float = 1e-4
     lr_gamma: float = 0.5
     lr_milestone: int = 3
 
@@ -130,16 +130,6 @@ class BaseModelConfig:
 
 
 @dataclass
-class SelfAttentionConfig:
-    """Configuration for self-attention blocks."""
-
-    num_layers: int = 5
-    block_size: int = 8
-    halo_size: int = 3
-    num_heads: int = 4
-
-
-@dataclass
 class AFGSAModelConfig(BaseModelConfig):
     """Configuration for AFGSA model."""
 
@@ -176,14 +166,14 @@ class Config:
     data: DataConfig = field(default_factory=DataConfig)
     trainer: TrainerConfig = field(default_factory=TrainerConfig)
     model: Union[AFGSAModelConfig, MambaModelConfig] = field(
-        default_factory=lambda: AFGSAModelConfig()
+        default_factory=lambda: AFGSAModelConfig(),
     )
     logging: LoggingConfig = field(default_factory=LoggingConfig)
 
     @classmethod
-    def parse_nested_config(cls, cfg_section, config_class):
-        """Utility to parse a nested config section into a dataclass instance."""
-        return config_class(**{k: v for k, v in cfg_section.items()})
+    def parse_nested_config(cls, cfg_section: dict, config_class: type) -> Any:  # noqa: ANN401
+        """Parse a nested config section into a dataclass instance."""
+        return config_class(**dict(cfg_section.items()))
 
     @classmethod
     def from_hydra(cls, cfg: DictConfig) -> "Config":
@@ -195,9 +185,9 @@ class Config:
 
         # Create appropriate model config based on model name
         if cfg.model.name == "afgsa":
-            model_cfg = AFGSAModelConfig(**{k: v for k, v in cfg.model.afgsa.items()})
+            model_cfg = AFGSAModelConfig(**dict(cfg.model.afgsa.items()))
         elif cfg.model.name == "mamba":
-            model_cfg = MambaModelConfig(**{k: v for k, v in cfg.model.mamba.items()})
+            model_cfg = MambaModelConfig(**dict(cfg.model.mamba.items()))
         else:
             raise ValueError(f"Unsupported model: {cfg.model.name}")
 
@@ -219,7 +209,8 @@ class Config:
         trainer = cls.parse_nested_config(trainer_dict, TrainerConfig)
         trainer.optim = cls.parse_nested_config(cfg.trainer.optim, OptimizerConfig)
         trainer.scheduler = cls.parse_nested_config(
-            cfg.trainer.scheduler, SchedulerConfig
+            cfg.trainer.scheduler,
+            SchedulerConfig,
         )
 
         cfg_dict["trainer"] = trainer

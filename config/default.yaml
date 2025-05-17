@@ -26,6 +26,11 @@ hydra:
     dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
   job:
     chdir: false
+    config:
+      override_dirname:
+        exclude_keys:
+          - run_num
+          - logging.level
   sweep:
     dir: ${pht_run_dirs:outputs, ${_dir_base_pattern}, none, ${run_num}, true}
     subdir: ${hydra.job.override_dirname}

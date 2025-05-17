@@ -1,21 +1,25 @@
-from torch.nn import Module
+"""Mamba trainer."""
+
 from omegaconf import DictConfig
+from torch.nn import Module
 
 from pht.config.base import MambaModelConfig
 from pht.models.afgsa.model import CurveOrder
 from pht.models.afgsa.util import create_folder
-from pht.models.mamba.model import MambaDenoiserNet, PositionalEncoding2D
 from pht.models.base_trainer import BaseTrainer, device
+from pht.models.mamba.model import MambaDenoiserNet, PositionalEncoding2D
 
 
 class MambaTrainer(BaseTrainer):
     """Trainer class for Mamba model."""
 
     def create_generator(self) -> Module:
-        """Create and return the Mamba generator model.
+        """
+        Create and return the Mamba generator model.
 
         Returns:
             MambaDenoiserNet model instance
+
         """
         # We know the model is MambaModelConfig
         model_cfg = self.cfg.model
@@ -47,6 +51,7 @@ def run(cfg: DictConfig) -> None:
 
     Args:
         cfg: Hydra configuration object
+
     """
     # Convert curve order string to enum
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)

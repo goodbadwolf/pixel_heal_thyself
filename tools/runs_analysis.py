@@ -37,13 +37,13 @@ def process_folder(folder_path, overrides_to_names_map):
     ):
         return None, None, None, None, None, None
 
-    with open(eval_path, "r") as f:
+    with open(eval_path) as f:
         eval_lines = [line.strip() for line in f.readlines() if line.strip()]
         if len(eval_lines) < 20:
             return None, None, None, None, None, None
 
     allowed_overrides = [r"data\.", r"trainer\."]
-    with open(overrides_path, "r") as f:
+    with open(overrides_path) as f:
         filtered_lines = []
         for line in f.readlines():
             line = line.strip()
@@ -85,7 +85,7 @@ def process_folder(folder_path, overrides_to_names_map):
 
     epoch_g_losses = {}
     epoch_d_losses = {}
-    with open(train_loss_path, "r") as f:
+    with open(train_loss_path) as f:
         loss_lines = [line.strip() for line in f.readlines() if line.strip()]
 
         for line in loss_lines:
@@ -127,8 +127,7 @@ def find_outliers(metrics):
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
 
-    outliers = [x for x in metrics if x < lower_bound or x > upper_bound]
-    return outliers
+    return [x for x in metrics if x < lower_bound or x > upper_bound]
 
 
 def calculate_stats(metrics, outliers):
@@ -146,7 +145,7 @@ def calculate_stats(metrics, outliers):
     }
 
 
-def set_plot_style():
+def set_plot_style() -> None:
     """Set the global plotting style."""
     sns.set_style("whitegrid")
     plt.rcParams["font.family"] = "sans-serif"
@@ -160,7 +159,7 @@ def set_plot_style():
     plt.rcParams["grid.linestyle"] = "--"
 
 
-def save_current_plot(filename):
+def save_current_plot(filename) -> None:
     plt.savefig(filename, dpi=300, bbox_inches="tight")
     print(f"Plot saved to {filename}")
 
@@ -177,7 +176,7 @@ def plot_metric(df, metric_type, colors, markers, metric_name):
 
     # Plot each configuration
     for _, (override, color, marker) in enumerate(
-        zip(df_subset["overrides"].unique(), colors, markers)
+        zip(df_subset["overrides"].unique(), colors, markers, strict=False),
     ):
         subset = df_subset[df_subset["overrides"] == override].sort_values("epoch")
 
@@ -221,7 +220,7 @@ def plot_metric(df, metric_type, colors, markers, metric_name):
     )
     ax.set_xlabel("Epoch", fontsize=12, labelpad=10, fontweight="semibold")
     ax.set_ylabel(
-        f"{metric_name} Value", fontsize=12, labelpad=10, fontweight="semibold"
+        f"{metric_name} Value", fontsize=12, labelpad=10, fontweight="semibold",
     )
 
     # For MRSE specifically, set log scale on y-axis
@@ -305,7 +304,7 @@ def create_summary_plot(df, colors, markers, metric_types, metric_names):
     # Store the legend for placing outside plots
     # lgd = None
 
-    for ax, metric_type in zip(axes, metric_types):
+    for ax, metric_type in zip(axes, metric_types, strict=False):
         df_subset = df[df["metric_type"] == metric_type]
         all_epochs = sorted(df_subset["epoch"].unique())
 
@@ -321,12 +320,12 @@ def create_summary_plot(df, colors, markers, metric_types, metric_names):
         unique_overrides = df_subset["overrides"].unique()
         max_configs = min(5, len(unique_overrides))
 
-        for i, (override, color, marker) in enumerate(
+        for _i, (override, color, marker) in enumerate(
             zip(
                 unique_overrides[:max_configs],
                 colors[:max_configs],
-                markers[:max_configs],
-            )
+                markers[:max_configs], strict=False,
+            ),
         ):
             subset = df_subset[df_subset["overrides"] == override].sort_values("epoch")
 
@@ -344,10 +343,10 @@ def create_summary_plot(df, colors, markers, metric_types, metric_names):
         ax.set_title(f"{metric_names[metric_type]}", fontsize=14)
         ax.grid(True, linestyle="--", alpha=0.5)
 
-        if metric_type == "mrses" or metric_type == "g_losses":
+        if metric_type in ("mrses", "g_losses"):
             ax.set_ylabel("Average Value", fontsize=12)
 
-        if metric_type == "psnrs" or metric_type == "d_losses":
+        if metric_type in ("psnrs", "d_losses"):
             # Only add shared legend on middle plot
             handles, labels = ax.get_legend_handles_labels()
             _ = ax.legend(
@@ -374,7 +373,7 @@ def generate_metrics_summary(
     discard_outliers=False,
     best_performer=False,
     verbose=False,
-):
+) -> None:
     UP_ARROW = "\u2191"
     DOWN_ARROW = "\u2193"
     EQUAL_ARROW = "\u2194"
@@ -421,10 +420,7 @@ def generate_metrics_summary(
 
                 # Get the last `tail_epochs` epochs for each configuration
                 all_epochs = sorted(metric_df["epoch"].unique())
-                if len(all_epochs) > tail_epochs:
-                    last_epochs = all_epochs[-tail_epochs:]
-                else:
-                    last_epochs = all_epochs
+                last_epochs = all_epochs[-tail_epochs:] if len(all_epochs) > tail_epochs else all_epochs
 
                 # Only keep data for the last epochs
                 last_epochs_df = metric_df[metric_df["epoch"].isin(last_epochs)]
@@ -446,12 +442,12 @@ def generate_metrics_summary(
 
                     if verbose:
                         f.write(
-                            f"Average metrics over last {len(last_epochs)} epochs ({', '.join(map(str, last_epochs))})\n\n"
+                            f"Average metrics over last {len(last_epochs)} epochs ({', '.join(map(str, last_epochs))})\n\n",
                         )
 
                     # Table header
                     f.write(
-                        f"{'Configuration':<30} | {'Avg Value':<10} | {'Diff':<10} | {'% Diff':<10} | {'% Trend':<5}\n"
+                        f"{'Configuration':<30} | {'Avg Value':<10} | {'Diff':<10} | {'% Diff':<10} | {'% Trend':<5}\n",
                     )
                     f.write("-" * 80 + "\n")
 
@@ -494,17 +490,14 @@ def generate_metrics_summary(
                                 abs_diff_str = f"{diff:.3f}"
 
                             # Skip baseline comparison with itself (diff would be 0)
-                            if config == baseline_config:
-                                pct_diff_str = "baseline"
-                            else:
-                                pct_diff_str = f"{pct_diff:.2f}"
+                            pct_diff_str = "baseline" if config == baseline_config else f"{pct_diff:.2f}"
 
                             f.write(
-                                f"{config:<30} | {value_str:<10} | {abs_diff_str:<10} | {pct_diff_str:<10} | {better:<5}\n"
+                                f"{config:<30} | {value_str:<10} | {abs_diff_str:<10} | {pct_diff_str:<10} | {better:<5}\n",
                             )
                         else:
                             f.write(
-                                f"{config:<30} | {'No data':<10} | {'N/A':<10} | {'N/A':<10}\n"
+                                f"{config:<30} | {'No data':<10} | {'N/A':<10} | {'N/A':<10}\n",
                             )
 
                 # f.write(f"Comparing to baseline configuration: {baseline_config}\n")
@@ -537,17 +530,17 @@ def generate_metrics_summary(
 
                             if metric_type == "mrses":
                                 f.write(
-                                    f"Epoch {epoch}: {best_config} (MRSE: {best_value:.6f})\n"
+                                    f"Epoch {epoch}: {best_config} (MRSE: {best_value:.6f})\n",
                                 )
                             else:
                                 f.write(
-                                    f"Epoch {epoch}: {best_config} ({metric_type[:-1].upper()}: {best_value:.3f})\n"
+                                    f"Epoch {epoch}: {best_config} ({metric_type[:-1].upper()}: {best_value:.3f})\n",
                                 )
 
                     # Summary of which configuration was best most often
                     f.write("\nConfiguration frequency as best performer:\n")
                     for config, count in sorted(
-                        best_configs.items(), key=lambda x: x[1], reverse=True
+                        best_configs.items(), key=lambda x: x[1], reverse=True,
                     ):
                         f.write(f"{config}: {count}/{len(last_epochs)} epochs\n")
 
@@ -594,7 +587,7 @@ plot_filters = {
 }
 
 
-def main(root_folder, discard_outliers):
+def main(root_folder, discard_outliers) -> None:
     """Main function to process folders and generate plots."""
     analysis_root = os.path.join(root_folder, "analysis")
     os.makedirs(analysis_root, exist_ok=True)
@@ -610,7 +603,7 @@ def main(root_folder, discard_outliers):
             "ssims": defaultdict(list),
             "g_losses": defaultdict(list),
             "d_losses": defaultdict(list),
-        }
+        },
     )
 
     # Process each folder
@@ -631,7 +624,7 @@ def main(root_folder, discard_outliers):
                 epoch_ssims,
                 epoch_g_losses,
                 epoch_d_losses,
-            ]
+            ],
         ):
             continue
 
@@ -679,7 +672,7 @@ def main(root_folder, discard_outliers):
                         "avg": stats["avg"],
                         "outliers": outliers,
                         "values": metrics,
-                    }
+                    },
                 )
         print(f"Processed {override} with {len(metrics)} metrics")
 
@@ -731,10 +724,10 @@ def main(root_folder, discard_outliers):
         filtered_df = df[df["overrides"].isin(filter)]
         for metric_type in metric_types:
             fig = plot_metric(
-                filtered_df, metric_type, colors, markers, metric_names[metric_type]
+                filtered_df, metric_type, colors, markers, metric_names[metric_type],
             )
             plot_filename = os.path.join(
-                analysis_root, f"{filter_name}.{metric_type}_{outliers_path_fragment}.png"
+                analysis_root, f"{filter_name}.{metric_type}_{outliers_path_fragment}.png",
             )
             save_current_plot(plot_filename)
             plt.close(fig)
@@ -752,7 +745,7 @@ def main(root_folder, discard_outliers):
                 metric_names=metric_names,
             )
             summary_filename = os.path.join(
-                analysis_root, f"{filter_name}_{outliers_path_fragment}.eval_summary.png"
+                analysis_root, f"{filter_name}_{outliers_path_fragment}.eval_summary.png",
             )
             save_current_plot(summary_filename)
             plt.close(fig)
@@ -770,7 +763,7 @@ def main(root_folder, discard_outliers):
                 metric_names=metric_names,
             )
             summary_filename = os.path.join(
-                analysis_root, f"{filter_name}_{outliers_path_fragment}.loss_summary.png"
+                analysis_root, f"{filter_name}_{outliers_path_fragment}.loss_summary.png",
             )
             save_current_plot(summary_filename)
             plt.close(fig)
@@ -791,7 +784,7 @@ def main(root_folder, discard_outliers):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Process run folders and analyze metric data."
+        description="Process run folders and analyze metric data.",
     )
     parser.add_argument("root_folder", help="The root folder to search for run folders")
     parser.add_argument(

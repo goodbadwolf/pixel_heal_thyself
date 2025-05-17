@@ -18,7 +18,7 @@ scheduler:
   gamma: 0.5
 
 # Generator/Discriminator learning rates
-lrG: 1e-4
-lrD: 1e-4
+lr_g: 1e-4
+lr_d: 1e-4
 lr_gamma: 0.5
 lr_milestone: 3

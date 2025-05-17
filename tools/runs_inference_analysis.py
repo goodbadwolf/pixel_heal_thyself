@@ -6,12 +6,12 @@
 # ]
 # ///
 import argparse
+import glob
 import os
 import re
+import time
 from collections import defaultdict
 from datetime import datetime
-import glob
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,7 +27,7 @@ def find_evaluation_files(dir_path):
 
 def process_evaluation_file(file_path):
     """Process a single evaluation file and extract metrics."""
-    with open(file_path, "r") as f:
+    with open(file_path) as f:
         content = f.read().strip()
 
     # Extract metrics using regex
@@ -93,8 +93,7 @@ def find_outliers(metrics):
     lower_bound = q1 - 1.5 * iqr
     upper_bound = q3 + 1.5 * iqr
 
-    outliers = [x for x in metrics if x < lower_bound or x > upper_bound]
-    return outliers
+    return [x for x in metrics if x < lower_bound or x > upper_bound]
 
 
 def calculate_stats(metrics, outliers=None, discard_outliers=False):
@@ -121,7 +120,7 @@ def calculate_stats(metrics, outliers=None, discard_outliers=False):
     }
 
 
-def set_plot_style():
+def set_plot_style() -> None:
     """Set the global plotting style with enhanced aesthetics."""
     # Use a more modern seaborn style
     sns.set_style("whitegrid", {"grid.linestyle": ":"})
@@ -158,7 +157,7 @@ def set_plot_style():
 
 
 # Enhanced box plot function with prettier aesthetics
-def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
+def create_box_plots(data_dict, dataset, output_path, discard_outliers=False) -> None:
     return
     """Create box plots comparing models for a specific dataset with enhanced visuals."""
     metric_names = {
@@ -193,8 +192,8 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
                     data_ranges[metric] = (min(metrics), max(metrics))
                 else:
                     data_ranges[metric] = (
-                        min(data_ranges[metric][0], min(metrics)),
-                        max(data_ranges[metric][1], max(metrics)),
+                        min(data_ranges[metric][0], *metrics),
+                        max(data_ranges[metric][1], *metrics),
                     )
         # Create prettier box plot
         bplot = sns.boxplot(
@@ -204,15 +203,15 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
             width=0.5,
             linewidth=1.2,
             fliersize=4,
-            boxprops=dict(alpha=0.8),
-            medianprops=dict(color="black"),
+            boxprops={"alpha": 0.8},
+            medianprops={"color": "black"},
             showmeans=True,
-            meanprops=dict(
-                marker="o",
-                markerfacecolor="white",
-                markeredgecolor="black",
-                markersize=8,
-            ),
+            meanprops={
+                "marker": "o",
+                "markerfacecolor": "white",
+                "markeredgecolor": "black",
+                "markersize": 8,
+            },
         )
 
         # Add swarm plot for individual data points with better visibility
@@ -242,13 +241,13 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
                     fontweight="bold",
                     fontsize=9,
                     color="#333333",
-                    bbox=dict(
-                        facecolor="white",
-                        alpha=0.9,
-                        edgecolor="#cccccc",
-                        boxstyle="round,pad=0.3",
-                        linewidth=0.5,
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "alpha": 0.9,
+                        "edgecolor": "#cccccc",
+                        "boxstyle": "round,pad=0.3",
+                        "linewidth": 0.5,
+                    },
                 )
 
         # Set title and labels with better styling
@@ -279,7 +278,7 @@ def create_box_plots(data_dict, dataset, output_path, discard_outliers=False):
         if metric == "rmse":
             # axes[i].set_ylim(0, 0.002)
             axes[i].yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.2f}")
+                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.2f}"),
             )
         elif metric == "psnr":
             # axes[i].set_ylim(35, 43)
@@ -325,7 +324,7 @@ def create_dataset_comparison_plot_summary(
     output_path,
     discard_outliers=False,
     variant_name="variant",
-):
+) -> None:
     """Create plot comparing performance across datasets with improved visuals."""
     # Get all datasets
     all_datasets = set()
@@ -392,7 +391,7 @@ def create_dataset_comparison_plot_summary(
             else:
                 # Missing data for one model
                 baseline_means.append(
-                    np.mean(baseline_vals) if baseline_vals else np.nan
+                    np.mean(baseline_vals) if baseline_vals else np.nan,
                 )
                 variant_means.append(np.mean(variant_vals) if variant_vals else np.nan)
 
@@ -427,14 +426,16 @@ def create_dataset_comparison_plot_summary(
         # Format value labels based on metric
         if metric == "rmse":
             # For RMSE values which are small numbers, use scientific notation
-            formatter = lambda x: f"{x * 10**4:.2f}×$10^{{-4}}$"
+            def formatter(x) -> str:
+                return f"{x * 10**4:.2f}×$10^{{-4}}$"
             ax.yaxis.set_major_formatter(
-                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}")
+                plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}"),
             )
             ax.set_ylabel("RMSE ($\\times 10^{-4}$)", fontsize=12, labelpad=10)
         else:
             # For PSNR and SSIM, use regular decimal format
-            formatter = lambda x: f"{x:.3f}"
+            def formatter(x) -> str:
+                return f"{x:.3f}"
             ax.set_ylabel(metric.upper(), fontsize=12, labelpad=10)
 
         # Add value labels on bars with enhanced styling
@@ -451,13 +452,13 @@ def create_dataset_comparison_plot_summary(
                     fontsize=9,
                     fontweight="bold",
                     color="#333333",
-                    bbox=dict(
-                        facecolor="white",
-                        alpha=0.8,
-                        edgecolor="#cccccc",
-                        boxstyle="round,pad=0.2",
-                        linewidth=0.5,
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "alpha": 0.8,
+                        "edgecolor": "#cccccc",
+                        "boxstyle": "round,pad=0.2",
+                        "linewidth": 0.5,
+                    },
                     zorder=15,
                 )
 
@@ -474,13 +475,13 @@ def create_dataset_comparison_plot_summary(
                     fontsize=9,
                     fontweight="bold",
                     color="#333333",
-                    bbox=dict(
-                        facecolor="white",
-                        alpha=0.8,
-                        edgecolor="#cccccc",
-                        boxstyle="round,pad=0.2",
-                        linewidth=0.5,
-                    ),
+                    bbox={
+                        "facecolor": "white",
+                        "alpha": 0.8,
+                        "edgecolor": "#cccccc",
+                        "boxstyle": "round,pad=0.2",
+                        "linewidth": 0.5,
+                    },
                     zorder=15,
                 )
 
@@ -494,7 +495,7 @@ def create_dataset_comparison_plot_summary(
 
         # Enhanced styling for titles and labels
         ax.set_title(
-            f"{metric_names[metric]} by Dataset", fontsize=14, fontweight="bold", pad=15
+            f"{metric_names[metric]} by Dataset", fontsize=14, fontweight="bold", pad=15,
         )
         ax.set_xticks(x)
         ax.set_xticklabels(all_datasets, rotation=0, ha="center", fontweight="semibold")
@@ -520,7 +521,7 @@ def create_dataset_comparison_plot_summary(
         elif metric == "ssim":
             # For SSIM, focus on the relevant range (typically high values)
             min_val = min(
-                [m for m in baseline_means + variant_means if not np.isnan(m)]
+                [m for m in baseline_means + variant_means if not np.isnan(m)],
             )
             y_min = max(0.9 * min_val, 0)
             y_max = 1.0
@@ -564,9 +565,11 @@ def create_dataset_comparison_plot(
     output_path,
     discard_outliers=False,
     variant_name="variant",
-):
-    """Create a single plot comparing performance across datasets for a specific metric,
-    with improvement percentages shown directly on the bars."""
+) -> None:
+    """
+    Create a single plot comparing performance across datasets for a specific metric,
+    with improvement percentages shown directly on the bars.
+    """
     # Get all datasets
     all_datasets = set()
     for model_data in data_dict.values():
@@ -574,7 +577,7 @@ def create_dataset_comparison_plot(
     all_datasets = sorted(all_datasets)
 
     if not all_datasets:
-        print(f"Warning: No datasets found for comparison")
+        print("Warning: No datasets found for comparison")
         return
 
     # Prepare data for plotting
@@ -675,7 +678,7 @@ def create_dataset_comparison_plot(
         # Scientific notation for RMSE
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x * 10**4:.1f}"))
         ax.set_ylabel(
-            "RMSE ($\\times 10^{-4}$)", fontsize=12, fontweight="semibold", labelpad=10
+            "RMSE ($\\times 10^{-4}$)", fontsize=12, fontweight="semibold", labelpad=10,
         )
     else:
         # Regular format for PSNR and SSIM
@@ -696,13 +699,13 @@ def create_dataset_comparison_plot(
                 fontsize=9,
                 fontweight="bold",
                 color="#333333",
-                bbox=dict(
-                    facecolor="white",
-                    alpha=0.8,
-                    edgecolor="#cccccc",
-                    boxstyle="round,pad=0.2",
-                    linewidth=0.5,
-                ),
+                bbox={
+                    "facecolor": "white",
+                    "alpha": 0.8,
+                    "edgecolor": "#cccccc",
+                    "boxstyle": "round,pad=0.2",
+                    "linewidth": 0.5,
+                },
                 zorder=15,
             )
 
@@ -736,13 +739,13 @@ def create_dataset_comparison_plot(
                 fontsize=9,
                 fontweight="bold",
                 color=imp_color,
-                bbox=dict(
-                    facecolor="white",
-                    alpha=0.9,
-                    edgecolor="#cccccc",
-                    boxstyle="round,pad=0.3",
-                    linewidth=0.5,
-                ),
+                bbox={
+                    "facecolor": "white",
+                    "alpha": 0.9,
+                    "edgecolor": "#cccccc",
+                    "boxstyle": "round,pad=0.3",
+                    "linewidth": 0.5,
+                },
                 zorder=15,
             )
 
@@ -753,7 +756,7 @@ def create_dataset_comparison_plot(
                 0,
                 max([m for m in baseline_means + variant_means if not np.isnan(m)])
                 * 1.15,
-            ]
+            ],
         )
     elif metric == "psnr":
         min_val = (
@@ -805,9 +808,9 @@ def create_dataset_comparison_plot(
         xycoords="axes fraction",
         fontsize=10,
         fontweight="semibold",
-        bbox=dict(
-            boxstyle="round,pad=0.4", fc="white", ec="#cccccc", alpha=0.9, linewidth=0.8
-        ),
+        bbox={
+            "boxstyle": "round,pad=0.4", "fc": "white", "ec": "#cccccc", "alpha": 0.9, "linewidth": 0.8,
+        },
         zorder=15,
     )
 
@@ -830,7 +833,7 @@ def create_dataset_comparison_plot(
     plt.close(fig)
 
 
-def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=False):
+def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=False) -> None:
     """Generate a summary report for a specific dataset."""
     UP_ARROW = "\u2191"
     DOWN_ARROW = "\u2193"
@@ -868,7 +871,7 @@ def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=F
 
             # Table header
             f.write(
-                f"{'Model':<20} | {'Min':<10} | {'Max':<10} | {'Avg':<10} | {'Median':<10} | {'StdDev':<10} | {'vs Baseline':<12}\n"
+                f"{'Model':<20} | {'Min':<10} | {'Max':<10} | {'Avg':<10} | {'Median':<10} | {'StdDev':<10} | {'vs Baseline':<12}\n",
             )
             f.write("-" * 80 + "\n")
 
@@ -945,7 +948,7 @@ def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=F
                         comp = f"{pct_diff:+.2f}% {better}"
 
                     f.write(
-                        f"{model_name:<20} | {min_val:<10} | {max_val:<10} | {avg_val:<10} | {med_val:<10} | {std_val:<10} | {comp:<12}\n"
+                        f"{model_name:<20} | {min_val:<10} | {max_val:<10} | {avg_val:<10} | {med_val:<10} | {std_val:<10} | {comp:<12}\n",
                     )
 
             f.write("\n")
@@ -960,7 +963,7 @@ def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=F
                         outliers = find_outliers(metrics)
                         if outliers:
                             f.write(
-                                f"{model_name}: {len(outliers)} outliers out of {len(metrics)} values\n"
+                                f"{model_name}: {len(outliers)} outliers out of {len(metrics)} values\n",
                             )
                         else:
                             f.write(f"{model_name}: No outliers found\n")
@@ -969,8 +972,8 @@ def generate_dataset_summary(data_dict, dataset, output_file, discard_outliers=F
 
 
 def generate_summary_report(
-    data_dict, output_file, discard_outliers=False, variant_name="variant"
-):
+    data_dict, output_file, discard_outliers=False, variant_name="variant",
+) -> None:
     """Generate a summary report comparing models across all datasets."""
     UP_ARROW = "\u2191"
     DOWN_ARROW = "\u2193"
@@ -996,16 +999,16 @@ def generate_summary_report(
 
         # Table header for datasets summary
         f.write(
-            f"{'Dataset':<15} | {'Baseline Files':<15} | {f'{variant_name} Files':<15}\n"
+            f"{'Dataset':<15} | {'Baseline Files':<15} | {f'{variant_name} Files':<15}\n",
         )
         f.write("-" * 80 + "\n")
 
         for dataset in all_datasets:
             baseline_count = len(
-                data_dict["Baseline"]["datasets"].get(dataset, {}).get("rmse", [])
+                data_dict["Baseline"]["datasets"].get(dataset, {}).get("rmse", []),
             )
             variant_count = len(
-                data_dict[variant_name]["datasets"].get(dataset, {}).get("rmse", [])
+                data_dict[variant_name]["datasets"].get(dataset, {}).get("rmse", []),
             )
 
             f.write(f"{dataset:<15} | {baseline_count:<15} | {variant_count:<15}\n")
@@ -1024,7 +1027,7 @@ def generate_summary_report(
 
             # Table header
             f.write(
-                f"{'Dataset':<15} | {'Baseline':<10} | {variant_name:<10} | {'Diff':<10} | {'% Change':<10} | {'Better?':<8}\n"
+                f"{'Dataset':<15} | {'Baseline':<10} | {variant_name:<10} | {'Diff':<10} | {'% Change':<10} | {'Better?':<8}\n",
             )
             f.write("-" * 80 + "\n")
 
@@ -1084,12 +1087,12 @@ def generate_summary_report(
                     diff_fmt = f"{diff:.6f}" if metric == "rmse" else f"{diff:.3f}"
 
                     f.write(
-                        f"{dataset:<15} | {baseline_fmt:<10} | {variant_fmt:<10} | {diff_fmt:<10} | {pct_change:+00.2f}% {'':<6} | {better:<8}\n"
+                        f"{dataset:<15} | {baseline_fmt:<10} | {variant_fmt:<10} | {diff_fmt:<10} | {pct_change:+00.2f}% {'':<6} | {better:<8}\n",
                     )
                 else:
                     # Missing data for one model
                     f.write(
-                        f"{dataset:<15} | {'N/A' if not baseline_metrics else '':<10} | {'N/A' if not variant_metrics else '':<10} | {'N/A':<10} | {'N/A':<10} | {'N/A':<8}\n"
+                        f"{dataset:<15} | {'N/A' if not baseline_metrics else '':<10} | {'N/A' if not variant_metrics else '':<10} | {'N/A':<10} | {'N/A':<10} | {'N/A':<8}\n",
                     )
 
             f.write("\n")
@@ -1101,7 +1104,7 @@ def generate_summary_report(
     print(f"Summary report saved to {output_file}")
 
 
-def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers):
+def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers) -> None:
     """Main function to process directories and generate analysis."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -1147,17 +1150,17 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
                 variant_data["datasets"][dataset]["ssim"].extend(metrics["ssim"])
                 variant_data["datasets"][dataset]["files"].extend(metrics["files"])
 
-    def adjust_dataset_names(data_dict):
+    def adjust_dataset_names(data_dict) -> None:
         training_datasets = ["fftle0", "fftle1", "taccturb0", "taccturb1"]
         all_datasets = set(data_dict["datasets"].keys())
         for dataset in all_datasets:
             if dataset in training_datasets:
                 data_dict["datasets"][dataset + "*"] = data_dict["datasets"].pop(
-                    dataset
+                    dataset,
                 )
             else:
                 data_dict["datasets"][dataset + "†"] = data_dict["datasets"].pop(
-                    dataset
+                    dataset,
                 )
 
     adjust_dataset_names(baseline_data)
@@ -1189,7 +1192,7 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
     for dataset in all_datasets:
         # Box plots
         box_plot_path = os.path.join(
-            output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png"
+            output_dir, f"{dataset[:-1]}_boxplots{outliers_suffix}.png",
         )
 
         create_box_plots(data_dict, dataset, box_plot_path, discard_outliers)
@@ -1197,15 +1200,15 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
     # Generate cross-dataset comparison plots
     for metric in ["rmse", "psnr", "ssim"]:
         comparison_path = os.path.join(
-            output_dir, f"dataset_comparison_{metric}{outliers_suffix}.png"
+            output_dir, f"dataset_comparison_{metric}{outliers_suffix}.png",
         )
         create_dataset_comparison_plot(
-            data_dict, metric, comparison_path, discard_outliers, variant_name
+            data_dict, metric, comparison_path, discard_outliers, variant_name,
         )
 
     # In the main function, after generating the individual metric plots:
     summary_plot_path = os.path.join(
-        output_dir, f"all_metrics_summary{outliers_suffix}.png"
+        output_dir, f"all_metrics_summary{outliers_suffix}.png",
     )
     create_dataset_comparison_plot_summary(
         data_dict,
@@ -1236,7 +1239,7 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
                         "rmse": metrics["rmse"][i],
                         "psnr": metrics["psnr"][i],
                         "ssim": metrics["ssim"][i],
-                    }
+                    },
                 )
 
     df = pd.DataFrame(rows)
@@ -1246,7 +1249,7 @@ def main(baseline_dirs, variant_dirs, variant_name, output_dir, discard_outliers
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Compare inference results between baseline and variant models, broken down by dataset."
+        description="Compare inference results between baseline and variant models, broken down by dataset.",
     )
     parser.add_argument(
         "--baseline",
@@ -1261,7 +1264,7 @@ if __name__ == "__main__":
         help="Directories containing variant inference results",
     )
     parser.add_argument(
-        "--name", default="variant", help="Name of the variant model (default: variant)"
+        "--name", default="variant", help="Name of the variant model (default: variant)",
     )
     parser.add_argument(
         "--output",

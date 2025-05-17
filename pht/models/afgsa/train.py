@@ -1,5 +1,5 @@
-import torch
-from torch.nn import Module
+"""AFGSA trainer."""
+
 from omegaconf import DictConfig
 
 from pht.config.base import AFGSAModelConfig
@@ -10,16 +10,18 @@ from pht.models.base_trainer import BaseTrainer, device
 
 class AFGSATrainer(BaseTrainer):
     """Trainer class for AFGSA model."""
-    
-    def create_generator(self) -> Module:
-        """Create and return the AFGSA generator model.
-        
+
+    def create_generator(self) -> AFGSANet:
+        """
+        Create and return the AFGSA generator model.
+
         Returns:
             AFGSANet model instance
+
         """
         model_cfg = self.cfg.model
         assert isinstance(model_cfg, AFGSAModelConfig)
-        
+
         return AFGSANet(
             model_cfg.input_channels,
             model_cfg.aux_input_channels,
@@ -38,9 +40,10 @@ class AFGSATrainer(BaseTrainer):
 def run(cfg: DictConfig) -> None:
     """
     Entry point for AFGSA training from Hydra.
-    
+
     Args:
         cfg: Hydra configuration object
+
     """
     # Convert curve order string to enum
     cfg.trainer.curve_order = CurveOrder(cfg.trainer.curve_order)
@@ -48,7 +51,7 @@ def run(cfg: DictConfig) -> None:
     # Create output directories
     create_folder(cfg.paths.output_dir)
     create_folder(cfg.data.patches.dir)
-    
+
     # Create and run trainer
     trainer = AFGSATrainer(cfg)
     trainer.train()
