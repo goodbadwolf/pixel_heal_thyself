@@ -1,3 +1,1 @@
-"""
-Utility tools for Pixel Heal Thyself project.
-"""
+"""Utility tools for Pixel Heal Thyself project."""

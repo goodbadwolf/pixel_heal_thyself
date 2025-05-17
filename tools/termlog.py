@@ -1,4 +1,4 @@
-"""
+r"""
 termlog.py - Enhanced tee-like utility for terminal streams.
 This module provides functionality similar to the Unix 'tee' command but with
 enhanced handling of terminal control characters. It reads from stdin, displays
@@ -11,16 +11,17 @@ characters to produce a clean, readable log.
 Usage:
     python termlog.py OUTPUT_FILE
     Program will read from stdin until EOF or keyboard interrupt.
+
 Example:
-    command_with_progress_output | python termlog.py logfile.txt
+    command_with_progress_output | python termlog.py logfile.txt.
+
 """
 
 import sys
 
 
-def process_stream(input_stream, output_file, stdout):
+def process_stream(input_stream, output_file, stdout) -> None:
     """Process input stream character-by-character, handle control characters and write to file."""
-
     buffer = []
 
     while True:
@@ -51,7 +52,7 @@ def process_stream(input_stream, output_file, stdout):
         output_file.flush()
 
 
-def main():
+def main() -> None:
     """Main entry point for the tee+ utility."""
     if len(sys.argv) != 2:
         print(f"Usage: {sys.argv[0]} OUTPUT_FILE")
