@@ -1,3 +1,5 @@
+"""Hydra plugin for PHT run directories."""
+
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -5,20 +7,22 @@ from typing import Optional
 
 from omegaconf import OmegaConf
 
-from pht.utils import SingletonMeta, is_none_or_empty, is_truthy
 from pht.logger import logger
+from pht.utils import SingletonMeta, is_none_or_empty, is_truthy
 
 
 @dataclass
 class PhtRunDirsCache(metaclass=SingletonMeta):
     """
-    Singleton cache for storing the last used run_dir and is_multirun state between multiple calls to the pht_run_dirs_resolver in a single process.
+    Singleton cache for storing the last used run_dir and is_multirun state.
+
+    Used between multiple calls to the `pht_run_dirs_resolver` in a single process.
     """
 
     is_multirun: Optional[bool] = None
     run_dir: Optional[Path] = None
 
-    def reset(self):
+    def reset(self) -> None:
         """Reset the cache to its initial state."""
         self.is_multirun = None
         self.run_dir = None
@@ -43,20 +47,16 @@ def pht_run_dirs_resolver(
 
     Returns:
         str: Path of the created run directory, relative to the current working directory.
-    """
 
+    """
     cache = PhtRunDirsCache()
 
     cwd = Path.cwd()
     is_multirun = is_truthy(cfg_is_multirun)
-    if is_none_or_empty(cfg_job_subdir):
-        job_subdir = None
-    else:
-        job_subdir = Path(cfg_job_subdir)
-    if is_none_or_empty(cfg_base_pattern):
-        base_pattern = None
-    else:
-        base_pattern = Path(cfg_base_pattern)
+    job_subdir = None if is_none_or_empty(cfg_job_subdir) else Path(cfg_job_subdir)
+    base_pattern = (
+        None if is_none_or_empty(cfg_base_pattern) else Path(cfg_base_pattern)
+    )
 
     try:
         run_num = int(cfg_run_num)
@@ -87,8 +87,7 @@ def pht_run_dirs_resolver(
             match = re.match(pattern, item.name)
             if match:
                 num = int(match.group(1))
-                if num > highest_num:
-                    highest_num = num
+                highest_num = max(highest_num, num)
         next_num = highest_num + 1
 
     run_dir: Path = base_dir / f"run{next_num:03d}"
@@ -109,15 +108,11 @@ def pht_run_dirs_resolver(
     return run_dir_str
 
 
-def register_pht_run_dirs_resolver():
-    """
-    Register the pht_run_dirs_resolver as an OmegaConf custom resolver.
-    """
+def register_pht_run_dirs_resolver() -> None:
+    """Register the pht_run_dirs_resolver as an OmegaConf custom resolver."""
     OmegaConf.register_new_resolver("pht_run_dirs", pht_run_dirs_resolver, replace=True)
 
 
-def reset_pht_run_dirs_cache():
-    """
-    Reset the singleton cache for the run dirs resolver. Useful for testing.
-    """
+def reset_pht_run_dirs_cache() -> None:
+    """Reset the singleton cache for the run dirs resolver."""
     PhtRunDirsCache().reset()
