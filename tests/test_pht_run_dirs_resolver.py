@@ -1,6 +1,10 @@
+"""Test the pht_run_dirs_resolver function."""
+
 import os
 import tempfile
+
 import pytest
+
 from pht.hydra.plugins.pht_run_dirs_resolver import (
     pht_run_dirs_resolver,
     register_pht_run_dirs_resolver,

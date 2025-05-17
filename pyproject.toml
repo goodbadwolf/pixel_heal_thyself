@@ -80,7 +80,7 @@ ignore = [
 unfixable = ["F401", "F841"]
 
 [tool.ruff.lint.per-file-ignores]
-"test_*.py" = ["ANN003", "D101", "D103"]
+"test_*.py" = ["ANN001","ANN003", "ANN201", "ANN202", "B023" , "D101", "D103", "INP001", "PLR2004"]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true
