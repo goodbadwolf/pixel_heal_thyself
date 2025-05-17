@@ -25,7 +25,7 @@ def temp_cwd(monkeypatch):
         yield tmpdir
 
 
-def test_single_run_creates_dir(temp_cwd):
+def test_single_run_creates_dir(temp_cwd):  # noqa: ARG001
     base_pattern = "modelA_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -40,7 +40,7 @@ def test_single_run_creates_dir(temp_cwd):
     assert os.listdir(output_dir) == []
 
 
-def test_single_run_with_explicit_run_num(temp_cwd):
+def test_single_run_with_explicit_run_num(temp_cwd):  # noqa: ARG001
     base_pattern = "modelB_p16_n50_r1"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -52,7 +52,7 @@ def test_single_run_with_explicit_run_num(temp_cwd):
     assert output_dir.endswith("run005")
 
 
-def test_multirun_creates_dir(temp_cwd):
+def test_multirun_creates_dir(temp_cwd):  # noqa: ARG001
     base_pattern = "modelC_p8_n25_r3"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -65,7 +65,7 @@ def test_multirun_creates_dir(temp_cwd):
     assert output_dir.endswith("run000")
 
 
-def test_multirun_with_cfg_job_subdir(temp_cwd):
+def test_multirun_with_cfg_job_subdir(temp_cwd):  # noqa: ARG001
     base_pattern = "modelD_p64_n200_r4"
     cfg_job_subdir = "job42"
     output_dir = pht_run_dirs_resolver(
@@ -80,7 +80,7 @@ def test_multirun_with_cfg_job_subdir(temp_cwd):
     assert os.path.exists(os.path.dirname(output_dir))
 
 
-def test_cache_behavior(temp_cwd):
+def test_cache_behavior(temp_cwd):  # noqa: ARG001
     base_pattern = "modelE_p32_n100_r2"
     output_dir1 = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -105,7 +105,7 @@ def test_cache_behavior(temp_cwd):
     assert output_dir3 == output_dir1
 
 
-def test_run_num_as_string(temp_cwd):
+def test_run_num_as_string(temp_cwd):  # noqa: ARG001
     base_pattern = "modelF_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -116,7 +116,7 @@ def test_run_num_as_string(temp_cwd):
     assert output_dir.endswith("run007")
 
 
-def test_cfg_job_subdir_none_string(temp_cwd):
+def test_cfg_job_subdir_none_string(temp_cwd):  # noqa: ARG001
     base_pattern = "modelG_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -155,13 +155,13 @@ def test_multiple_runs_increment(temp_cwd):
 
 
 @pytest.mark.parametrize(
-    "is_multirun,expected_dir",
+    ("is_multirun", "expected_dir"),
     [
         (False, "runs"),
         (True, "multiruns"),
     ],
 )
-def test_dir_type_switch(temp_cwd, is_multirun, expected_dir):
+def test_dir_type_switch(temp_cwd, is_multirun, expected_dir):  # noqa: ARG001
     base_pattern = "modelJ_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -172,7 +172,7 @@ def test_dir_type_switch(temp_cwd, is_multirun, expected_dir):
     assert expected_dir in output_dir
 
 
-def test_cfg_job_subdir_with_special_chars(temp_cwd):
+def test_cfg_job_subdir_with_special_chars(temp_cwd):  # noqa: ARG001
     base_pattern = "modelK_p32_n100_r2"
     cfg_job_subdir = "job-42_!@#"
     output_dir = pht_run_dirs_resolver(
@@ -184,7 +184,7 @@ def test_cfg_job_subdir_with_special_chars(temp_cwd):
     assert output_dir.endswith(f"run000/{cfg_job_subdir}")
 
 
-def test_run_num_zero(temp_cwd):
+def test_run_num_zero(temp_cwd):  # noqa: ARG001
     base_pattern = "modelL_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -195,7 +195,7 @@ def test_run_num_zero(temp_cwd):
     assert output_dir.endswith("run000")
 
 
-def test_invalid_run_num(temp_cwd):
+def test_invalid_run_num(temp_cwd):  # noqa: ARG001
     base_pattern = "modelM_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -206,7 +206,7 @@ def test_invalid_run_num(temp_cwd):
     assert output_dir.endswith("run000")
 
 
-def test_dir_type_argument_ignored(temp_cwd):
+def test_dir_type_argument_ignored(temp_cwd):  # noqa: ARG001
     base_pattern = "modelN_p32_n100_r2"
     output_dir = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -217,7 +217,7 @@ def test_dir_type_argument_ignored(temp_cwd):
     assert output_dir.endswith("run000")
 
 
-def test_multiple_cfg_job_subdirs_multirun(temp_cwd):
+def test_multiple_cfg_job_subdirs_multirun(temp_cwd):  # noqa: ARG001
     base_pattern = "modelO_p32_n100_r2"
     cfg_job_subdirs = ["job1", "job2", "job3"]
     dirs = [
@@ -229,7 +229,7 @@ def test_multiple_cfg_job_subdirs_multirun(temp_cwd):
         )
         for jid in cfg_job_subdirs
     ]
-    for jid, d in zip(cfg_job_subdirs, dirs):
+    for jid, d in zip(cfg_job_subdirs, dirs, strict=False):
         assert d.endswith(f"run000/{jid}")
     # All share the same parent run dir
     parent = os.path.dirname(dirs[0])
@@ -237,7 +237,7 @@ def test_multiple_cfg_job_subdirs_multirun(temp_cwd):
         assert os.path.dirname(d) == parent
 
 
-def test_cache_reset_between_tests_without_delete(temp_cwd):
+def test_cache_reset_between_tests_without_delete(temp_cwd):  # noqa: ARG001
     base_pattern = "modelP_p32_n100_r2"
     output_dir1 = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
@@ -257,7 +257,7 @@ def test_cache_reset_between_tests_without_delete(temp_cwd):
     assert output_dir1 != output_dir2
 
 
-def test_cache_reset_between_tests_with_delete(temp_cwd):
+def test_cache_reset_between_tests_with_delete(temp_cwd):  # noqa: ARG001
     base_pattern = "modelP_p32_n100_r2"
     output_dir1 = pht_run_dirs_resolver(
         cfg_base_pattern=base_pattern,
