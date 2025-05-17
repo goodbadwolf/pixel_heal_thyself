@@ -1,6 +1,6 @@
 """Configuration registry for PHT models."""
 
-from typing import Dict, Type
+from typing import ClassVar, Type
 
 from omegaconf import DictConfig
 
@@ -15,7 +15,7 @@ from pht.config.base import (
 class ConfigRegistry:
     """Registry for model configurations."""
 
-    _model_configs: Dict[str, Type[BaseModelConfig]] = {
+    _model_configs: ClassVar[dict[str, Type[BaseModelConfig]]] = {
         "afgsa": AFGSAModelConfig,
         "mamba": MambaModelConfig,
     }
@@ -29,7 +29,9 @@ class ConfigRegistry:
 
     @classmethod
     def register_model_config(
-        cls, name: str, config_class: Type[BaseModelConfig]
+        cls,
+        name: str,
+        config_class: Type[BaseModelConfig],
     ) -> None:
         """Register a new model configuration class."""
         cls._model_configs[name] = config_class
@@ -46,6 +48,6 @@ class ConfigRegistry:
         model_class = cls.get_model_config_class(config.model.name)
         if not isinstance(config.model, model_class):
             raise TypeError(
-                f"Expected model config of type {model_class.__name__}, got {type(config.model).__name__}"
+                f"Expected model config of type {model_class.__name__}, got {type(config.model).__name__}",
             )
         return True
