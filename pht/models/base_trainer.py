@@ -1,30 +1,25 @@
+"""Base trainer for PHT models."""
+
 import math
 import os
 import random
 import time
-from abc import ABC, abstractmethod
-from typing import Tuple, Optional
 import traceback
+from abc import ABC, abstractmethod
+from typing import Optional, Tuple
 
 import lpips
 import numpy as np
 import torch
-import torch.optim as optim
-from torch.optim import lr_scheduler
+from torch import optim
 from torch.nn import Module
+from torch.optim import lr_scheduler
 
 from pht.config.base import Config
-
+from pht.logger import logger
 from pht.models.afgsa.dataset import Dataset
 from pht.models.afgsa.discriminators import MultiScaleDiscriminator
 from pht.models.afgsa.gen_hdf5 import Hdf5Constructor
-from pht.models.losses import (
-    GANLoss,
-    GradientPenaltyLoss,
-    L1ReconstructionLoss,
-    RaHingeGANLoss,
-    SSIMLoss,
-)
 from pht.models.afgsa.metric import calculate_psnr, calculate_rmse, calculate_ssim
 from pht.models.afgsa.model import DiscriminatorVGG, print_model_structure
 from pht.models.afgsa.prefetch_dataloader import DataLoaderX
@@ -38,43 +33,63 @@ from pht.models.afgsa.util import (
     save_img_group,
     tensor2img,
 )
-
-from pht.logger import logger
+from pht.models.losses import (
+    GANLoss,
+    GradientPenaltyLoss,
+    L1ReconstructionLoss,
+    RaHingeGANLoss,
+    SSIMLoss,
+)
+from pht.utils import run_once_multiprocessing
 
 # Global constants
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 permutation = [0, 3, 1, 2]  # NHWC → NCHW
 
 
-def set_determinism(seed: int, deterministic: bool = True, prefix=None) -> None:
+@run_once_multiprocessing
+def set_determinism(
+    seed: int,
+    deterministic: bool = True,
+    _prefix: str | None = None,
+) -> None:
+    """Set determinism for the training process."""
     random.seed(seed)
     np.random.seed(seed)
     os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
+
     if deterministic:
         torch.use_deterministic_algorithms(True, warn_only=True)
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-    # msg = f"{prefix + ': ' if prefix else ''}Determinism set to {deterministic} with seed {seed}"
-    # logger.info(msg)
 
 
-def worker_init_fn(worker_id, base_seed, deterministic):
+def worker_init_fn(
+    worker_id: int,
+    base_seed: int,
+    deterministic: bool,
+) -> None:
+    """Set determinism for the training process."""
     set_determinism(
-        base_seed + worker_id, deterministic, prefix=f"Trainer worker {worker_id}"
+        base_seed + worker_id,
+        deterministic,
+        _prefix=f"Trainer worker {worker_id}",
     )
 
 
 class BaseTrainer(ABC):
     """Base class for all model trainers in the PHT project."""
 
-    def __init__(self, cfg: Config):
-        """Initialize the trainer with configuration.
+    def __init__(self, cfg: Config) -> None:
+        """
+        Initialize the trainer with configuration.
 
         Args:
             cfg: Typed configuration object
+
         """
         self.cfg = cfg
         self.deterministic = cfg.trainer.deterministic
@@ -86,34 +101,38 @@ class BaseTrainer(ABC):
 
     @abstractmethod
     def create_generator(self) -> Module:
-        """Create and return the generator model.
+        """
+        Create and return the generator model.
 
         Returns:
             A PyTorch model that serves as the generator
+
         """
-        pass
 
     def create_discriminator(self) -> Module:
-        """Create and return the discriminator model.
+        """
+        Create and return the discriminator model.
 
         Returns:
             A PyTorch model that serves as the discriminator
+
         """
         if self.cfg.model.discriminator.use_multiscale_discriminator:
             return MultiScaleDiscriminator(
                 in_nc=self.cfg.model.input_channels,
                 patch_size=self.cfg.data.patches.patch_size,
             ).to(device)
-        else:
-            return DiscriminatorVGG(3, 64, self.cfg.data.patches.patch_size).to(device)
+        return DiscriminatorVGG(3, 64, self.cfg.data.patches.patch_size).to(device)
 
     def create_losses(
         self,
     ) -> Tuple[Module, Module, Module, Optional[Module], Optional[Module]]:
-        """Create and return the loss functions.
+        """
+        Create and return the loss functions.
 
         Returns:
             A tuple containing (l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss)
+
         """
         l1_loss = L1ReconstructionLoss().to(device)
         gan_loss = (
@@ -135,14 +154,17 @@ class BaseTrainer(ABC):
         return l1_loss, gan_loss, gp_loss, lpips_loss, ssim_loss
 
     def create_optimizers(
-        self, G: Module, D: Module
+        self,
+        G: Module,  # noqa: N803
+        D: Module,  # noqa: N803
     ) -> Tuple[
         optim.Optimizer,
         lr_scheduler.LRScheduler,
         optim.Optimizer,
         lr_scheduler.LRScheduler,
     ]:
-        """Create and return the optimizers and schedulers.
+        """
+        Create and return the optimizers and schedulers.
 
         Args:
             G: Generator model
@@ -150,6 +172,7 @@ class BaseTrainer(ABC):
 
         Returns:
             A tuple containing (optimizer_G, scheduler_G, optimizer_D, scheduler_D)
+
         """
         milestones = [
             i * self.cfg.trainer.lr_milestone - 1
@@ -157,17 +180,27 @@ class BaseTrainer(ABC):
         ]
 
         optimizer_generator = optim.Adam(
-            G.parameters(), lr=self.cfg.trainer.lrG, betas=(0.9, 0.999), eps=1e-8
+            G.parameters(),
+            lr=self.cfg.trainer.lr_g,
+            betas=(0.9, 0.999),
+            eps=1e-8,
         )
         scheduler_generator = lr_scheduler.MultiStepLR(
-            optimizer_generator, milestones=milestones, gamma=0.5
+            optimizer_generator,
+            milestones=milestones,
+            gamma=0.5,
         )
 
         optimizer_discriminator = optim.Adam(
-            D.parameters(), lr=self.cfg.trainer.lrD, betas=(0.9, 0.999), eps=1e-8
+            D.parameters(),
+            lr=self.cfg.trainer.lr_d,
+            betas=(0.9, 0.999),
+            eps=1e-8,
         )
         scheduler_discriminator = lr_scheduler.MultiStepLR(
-            optimizer_discriminator, milestones=milestones, gamma=0.5
+            optimizer_discriminator,
+            milestones=milestones,
+            gamma=0.5,
         )
 
         return (
@@ -187,11 +220,11 @@ class BaseTrainer(ABC):
         logger.info(f"{self.model_name} GP lossW: {self.cfg.model.losses.gp_loss_w}")
         if self.cfg.model.losses.use_lpips_loss:
             logger.info(
-                f"{self.model_name} LPIPS lossW: {self.cfg.model.losses.lpips_loss_w}"
+                f"{self.model_name} LPIPS lossW: {self.cfg.model.losses.lpips_loss_w}",
             )
         if self.cfg.model.losses.use_ssim_loss:
             logger.info(
-                f"{self.model_name} SSIM lossW: {self.cfg.model.losses.ssim_loss_w}"
+                f"{self.model_name} SSIM lossW: {self.cfg.model.losses.ssim_loss_w}",
             )
         if self.cfg.model.discriminator.use_multiscale_discriminator:
             logger.info(f"{self.model_name} multiscale discriminator")
@@ -199,10 +232,12 @@ class BaseTrainer(ABC):
             logger.info(f"{self.model_name} use FiLM")
 
     def setup_dataloaders(self) -> Tuple[DataLoaderX, DataLoaderX, int, int]:
-        """Set up and return the training and validation dataloaders.
+        """
+        Set up and return the training and validation dataloaders.
 
         Returns:
             A tuple containing (train_dataloader, val_dataloader, train_num_samples, val_num_samples)
+
         """
         train_save_path = os.path.join(self.cfg.data.patches.dir, "train.h5")
         val_save_path = os.path.join(self.cfg.data.patches.dir, "val.h5")
@@ -240,7 +275,9 @@ class BaseTrainer(ABC):
                 num_workers=7,
                 pin_memory=True,
                 worker_init_fn=lambda wid: worker_init_fn(
-                    wid, self.cfg.seed, self.deterministic
+                    wid,
+                    self.cfg.seed,
+                    self.deterministic,
                 ),
             )
         else:
@@ -267,7 +304,9 @@ class BaseTrainer(ABC):
                 num_workers=7,
                 pin_memory=True,
                 worker_init_fn=lambda wid: worker_init_fn(
-                    wid, self.cfg.seed, self.deterministic
+                    wid,
+                    self.cfg.seed,
+                    self.deterministic,
                 ),
             )
         else:
@@ -281,10 +320,11 @@ class BaseTrainer(ABC):
 
         return train_dataloader, val_dataloader, train_num_samples, val_num_samples
 
-    def train(self) -> None:
-        """Main training loop."""
+    def train(self) -> None:  # noqa: C901, PLR0912, PLR0915
+        """Train the model."""
         logger.info(
-            f"Starting training: model={self.model_name}, seed={self.cfg.seed}, batch_size={self.cfg.trainer.batch_size}, epochs={self.cfg.trainer.epochs}"
+            f"Starting training: model={self.model_name}, seed={self.cfg.seed}, "
+            f"batch_size={self.cfg.trainer.batch_size}, epochs={self.cfg.trainer.epochs}",
         )
         logger.info(f"Loading dataset: patches from {self.cfg.data.patches.dir}")
         train_dataloader, val_dataloader, train_num_samples, val_num_samples = (
@@ -294,16 +334,16 @@ class BaseTrainer(ABC):
         self.padding_mode = "replicate" if self.deterministic else "reflect"
         # Create models and training components
         self.print_training_config()
-        G = self.create_generator()
-        D = self.create_discriminator()
+        G = self.create_generator()  # noqa: N806
+        D = self.create_discriminator()  # noqa: N806
 
         # Load model if specified
         if self.cfg.trainer.load_model:
             G.load_state_dict(
-                torch.load(os.path.join(self.cfg.trainer.model_path, "G.pt"))
+                torch.load(os.path.join(self.cfg.trainer.model_path, "G.pt")),
             )
             D.load_state_dict(
-                torch.load(os.path.join(self.cfg.trainer.model_path, "D.pt"))
+                torch.load(os.path.join(self.cfg.trainer.model_path, "D.pt")),
             )
 
         print_model_structure(G)
@@ -332,7 +372,7 @@ class BaseTrainer(ABC):
                 # Process input data
                 aux_features = batch_sample["aux"]
                 aux_features[:, :, :, :3] = torch.FloatTensor(
-                    preprocess_normal(aux_features[:, :, :, :3])
+                    preprocess_normal(aux_features[:, :, :, :3]),
                 )
                 aux_features = aux_features.permute(permutation).to(device)
                 noisy = batch_sample["noisy"]
@@ -343,10 +383,7 @@ class BaseTrainer(ABC):
                 gt = gt.permute(permutation).to(device)
 
                 end_io = time.time()
-                if i_batch != 0:
-                    io_took = end_io - end
-                else:
-                    io_took = end_io - start
+                io_took = end_io - end if i_batch != 0 else end_io - start
 
                 output = G(noisy, aux_features)
 
@@ -393,15 +430,15 @@ class BaseTrainer(ABC):
                     + self.cfg.model.losses.l1_loss_w * loss_l1
                 )
 
-                def assert_nchw(x, name):
-                    assert x.ndim == 4 and x.shape[1] == 3, f"{name} not NCHW/3‑ch"
+                def assert_nchw(x, name) -> None:  # noqa: ANN001
+                    assert x.ndim == 4 and x.shape[1] == 3, f"{name} not NCHW/3‑ch"  # noqa: PLR2004, PT018, RUF001
 
                 assert_nchw(output, "output")
                 assert_nchw(gt, "gt")
 
                 if self.cfg.model.losses.use_lpips_loss:
 
-                    def to_lpips_range(x_log):
+                    def to_lpips_range(x_log):  # noqa: ANN001, ANN202
                         x_lin = torch.exp(x_log) - 1.0
                         x_rgb = (x_lin / (x_lin.max() + 1e-6)).clamp(0, 1)
                         return x_rgb * 2 - 1
@@ -419,29 +456,26 @@ class BaseTrainer(ABC):
                     generator_loss.item() / self.cfg.trainer.batch_size
                 )
 
-                if i_batch == 0:
-                    iter_took = time.time() - start
-                else:
-                    iter_took = time.time() - end
+                iter_took = time.time() - start if i_batch == 0 else time.time() - end
                 end = time.time()
                 if i_batch % 10 == 0 or i_batch == total_iterations - 1:
                     logger.debug(
                         f"[Train] epoch={epoch + 1} iter={i_batch + 1}/{total_iterations} "
                         f"g_loss={accumulated_generator_loss / (i_batch + 1):.4f} "
                         f"d_loss={accumulated_discriminator_loss / (i_batch + 1):.4f} "
-                        f"iter_time={iter_took:.2f}s io_time={io_took:.2f}s"
+                        f"iter_time={iter_took:.2f}s io_time={io_took:.2f}s",
                     )
 
             logger.info(
                 f"[Train] epoch={epoch + 1} summary: g_loss={accumulated_generator_loss / (i_batch + 1):.4f} "
-                f"d_loss={accumulated_discriminator_loss / (i_batch + 1):.4f} time={int(end - start)}s"
+                f"d_loss={accumulated_discriminator_loss / (i_batch + 1):.4f} time={int(end - start)}s",
             )
 
             # Save loss values
             with open(os.path.join(root_save_path, "train_loss.txt"), "a") as f:
                 f.write(
                     f"Epoch: {epoch + 1} \tG loss: {accumulated_generator_loss / (i_batch + 1):.4f} "
-                    f"\tD Loss: {accumulated_discriminator_loss / (i_batch + 1):.4f}\n"
+                    f"\tD Loss: {accumulated_discriminator_loss / (i_batch + 1):.4f}\n",
                 )
 
             scheduler_discriminator.step()
@@ -461,17 +495,18 @@ class BaseTrainer(ABC):
                     save_img_interval,
                 )
 
-    def _validate_and_save(
+    def _validate_and_save(  # noqa: PLR0913
         self,
         epoch: int,
-        G: Module,
-        D: Module,
+        G: Module,  # noqa: N803
+        D: Module,  # noqa: N803
         val_dataloader: DataLoaderX,
         val_num_samples: int,
         root_save_path: str,
         save_img_interval: int,
     ) -> None:
-        """Validate the model and save checkpoints.
+        """
+        Validate the model and save checkpoints.
 
         Args:
             epoch: Current training epoch
@@ -481,9 +516,10 @@ class BaseTrainer(ABC):
             val_num_samples: Number of validation samples
             root_save_path: Base directory to save results
             save_img_interval: Interval at which to save validation images
+
         """
         current_save_path = create_folder(
-            os.path.join(root_save_path, f"model_epoch{epoch + 1}")
+            os.path.join(root_save_path, f"model_epoch{epoch + 1}"),
         )
         avg_psnr = 0.0
         avg_ssim = 0.0
@@ -499,7 +535,7 @@ class BaseTrainer(ABC):
             for i_batch, batch_sample in enumerate(val_dataloader):
                 aux_features = batch_sample["aux"]
                 aux_features[:, :, :, :3] = torch.FloatTensor(
-                    preprocess_normal(aux_features[:, :, :, :3])
+                    preprocess_normal(aux_features[:, :, :, :3]),
                 )
                 aux_features = aux_features.permute(permutation).to(device)
                 noisy = batch_sample["noisy"]
@@ -536,8 +572,9 @@ class BaseTrainer(ABC):
                 if i_batch % 10 == 0 or i_batch == val_num_samples - 1:
                     logger.debug(
                         f"[Val] epoch={epoch + 1} iter={i_batch + 1}/{val_num_samples} "
-                        f"mrse={avg_mrse / (i_batch + 1):.4f} psnr={avg_psnr / (i_batch + 1):.4f} ssim={avg_ssim / (i_batch + 1):.4f} "
-                        f"val_time={end - start:.2f}s"
+                        f"mrse={avg_mrse / (i_batch + 1):.4f} psnr={avg_psnr / (i_batch + 1):.4f} "
+                        f"ssim={avg_ssim / (i_batch + 1):.4f} "
+                        f"val_time={end - start:.2f}s",
                     )
             G.train()
 
@@ -545,12 +582,14 @@ class BaseTrainer(ABC):
             avg_psnr /= val_num_samples
             avg_ssim /= val_num_samples
             logger.info(
-                f"[Val] epoch={epoch + 1} summary: avg_mrse={avg_mrse:.4f} avg_psnr={avg_psnr:.4f} avg_1-ssim={1 - avg_ssim:.4f} time={int(end - start)}s"
+                f"[Val] epoch={epoch + 1} summary: avg_mrse={avg_mrse:.4f} "
+                f"avg_psnr={avg_psnr:.4f} avg_1-ssim={1 - avg_ssim:.4f} "
+                f"time={int(end - start)}s",
             )
 
             # Save evaluation results
             with open(os.path.join(root_save_path, "evaluation.txt"), "a") as f:
                 f.write(
                     f"Validation: {epoch + 1} \tAvg MRSE: {avg_mrse:.4f} "
-                    f"\tAvg PSNR: {avg_psnr:.4f} \tAvg 1-SSIM: {1 - avg_ssim:.4f}\n"
+                    f"\tAvg PSNR: {avg_psnr:.4f} \tAvg 1-SSIM: {1 - avg_ssim:.4f}\n",
                 )
