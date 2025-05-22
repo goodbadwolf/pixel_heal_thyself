@@ -98,3 +98,8 @@ uv run python -m pht.train -cn dev trainer.epochs=10 model=mamba
 ### Variable Naming
 
 - Use descriptive variable names, unless it makes the code unwiedly or hard to write
+
+### Git Workflow
+
+- Before running any git commands, ALWAYS check the current git state like branch and status. NEVER assume the state.
+- When performing git actions on remote branches, like pushing or pulling, always use the same name for both local and remote branches. Never push a local branch to a remote branch with a different name unless explicitly requested
