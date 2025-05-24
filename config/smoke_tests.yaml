@@ -1,0 +1,53 @@
+defaults:
+  - model: afgsa
+  - data: default
+  - trainer: default
+  - _self_
+
+_base_pattern: p${data.patches.patch_size}_n${data.patches.num_patches}_r${data.images.scale}
+_dir_base_pattern: ${model.name}_${_base_pattern}
+
+# Global settings
+seed: 990819
+data_ratio: 0.95
+run_num: -1
+
+data:
+  images:
+    dir: ${paths.root}/data/images_ci
+    scale: 1.0
+  patches:
+    patch_size: 32
+    num_patches: 100
+
+trainer:
+  epochs: 5
+
+# File paths
+paths:
+  root: ${hydra:runtime.cwd}
+  output_dir: ${pht_run_dirs:outputs_smoke_tests, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
+
+logging:
+  level: INFO
+
+# Hydra configuration
+hydra:
+  run:
+    dir: ${pht_run_dirs:outputs_smoke_tests, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
+  job:
+    chdir: false
+    config:
+      override_dirname:
+        exclude_keys:
+          - run_num
+          - logging.level
+  sweep:
+    dir: ${pht_run_dirs:outputs_smoke_tests, ${_dir_base_pattern}, none, ${run_num}, true}
+    subdir: ${hydra.job.override_dirname}
+  job_logging:
+    loggers:
+      pht:
+        level: ${logging.level}
+      torch:
+        level: ${logging.level}

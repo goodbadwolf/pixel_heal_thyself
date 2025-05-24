@@ -1,0 +1,66 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install latest version of uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras --dev
+
+      - name: Run smoke tests
+        run: |
+          uv run python ./tests/smoke_tests.py --format json -o smoke_tests_results.json
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-tests-results
+          path: smoke_tests_results.json
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const results = JSON.parse(fs.readFileSync('smoke_tests_results.json', 'utf8'));
+
+            const passed = results.filter(r => r.success).length;
+            const total = results.length;
+            const emoji = passed === total ? '✅' : '❌';
+
+            let comment = `## ${emoji} Smoke Test Results\n\n`;
+            comment += `**${passed}/${total}** tests passed\n\n`;
+
+            if (passed < total) {
+              comment += '### Failed Tests:\n';
+              results.filter(r => !r.success).forEach(r => {
+                comment += `- ❌ ${r.name}\n`;
+              });
+            }
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });

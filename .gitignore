@@ -190,3 +190,4 @@ data/
 runs/
 multiruns/
 outputs/
+smoke_tests_results.json
