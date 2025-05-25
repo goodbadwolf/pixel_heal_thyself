@@ -41,7 +41,12 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: smoke-tests-results
-          path: smoke_tests_results.json
+          path: |
+            smoke_tests_results.json
+            outputs_smoke_tests/runs/afgsa*/**/*.txt
+            outputs_smoke_tests/runs/afgsa*/**/*.log
+            outputs_smoke_tests/runs/mamba*/**/*.txt
+            outputs_smoke_tests/runs/mamba*/**/*.log
 
       - name: Comment PR with results
         if: github.event_name == 'pull_request' && always()
@@ -97,7 +102,6 @@ jobs:
                     comment += `  - Training: ${r.training_error}\n`;
                   }
                 }
-              }
               });
 
               await github.rest.issues.createComment({

@@ -3,7 +3,7 @@
 # Pre-push hook to run smoke tests before pushing
 # This prevents pushing code that fails basic smoke tests
 
-set -e  # Exit on error
+set -e # Exit on error
 
 # Colors for output
 RED='\033[0;31m'
@@ -30,7 +30,7 @@ fi
 
 # Run smoke tests with minimal verbosity
 echo -e "${GREEN}Running PHT smoke tests...${NC}"
-if uv run python -m tests.smoke_tests; then
+if uv run python -m tests.smoke_tests --clean-pre-run --clean-post-run; then
     echo -e "${GREEN}✓ All smoke tests passed!${NC}"
     exit 0
 else

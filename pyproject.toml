@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "einops>=0.8.1",
-    "expecttest>=0.3.0", # Torch needs this?
+    "expecttest>=0.3.0",         # Torch needs this?
     "h5py>=3.13.0",
     "hilbertcurve>=2.0.5",
     "hydra-core>=1.3.2",
