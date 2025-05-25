@@ -27,7 +27,10 @@ jobs:
           python-version-file: "pyproject.toml"
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras --dev
+        run: |
+          # Use CPU-only PyTorch packages on CI by overriding the index
+          # The pytorch-cu126 index in pyproject.toml is marked as explicit, so we need to override it
+          UV_INDEX_pytorch_cu126_URL="https://download.pytorch.org/whl/cpu" uv sync --locked --all-extras --dev
 
       - name: Run smoke tests
         run: |
