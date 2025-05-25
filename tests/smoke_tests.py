@@ -535,24 +535,16 @@ def main() -> None:
         help="Show detailed output",
     )
     parser.add_argument(
-        "-c",
-        "--clean",
+        "--clean-pre-run",
         action="store_true",
-        default=True,
+        default=False,
         help="Clean output directory before running tests",
     )
     parser.add_argument(
-        "-k",
-        "--keep-outputs",
+        "--clean-post-run",
         action="store_true",
-        default=True,
-        help="Keep output directory after running tests",
-    )
-    parser.add_argument(
-        "--format",
-        type=str,
-        choices=["json"],
-        help="Output format for results",
+        default=False,
+        help="Clean output directory after running tests",
     )
     parser.add_argument(
         "-o",
@@ -568,13 +560,19 @@ def main() -> None:
         default="smoke_tests_results.json",
         help="Results file (default: smoke_tests_results.json)",
     )
-
+    parser.add_argument(
+        "-f",
+        "--save-results-format",
+        type=str,
+        choices=["json"],
+        help="Save results in specified format",
+    )
     args = parser.parse_args()
 
     log(f"{Colors.BOLD}PHT Smoke Tests{Colors.ENDC}")
     log("=" * SEPARATOR_LENGTH)
 
-    if args.clean and args.output.exists():
+    if args.clean_pre_run and args.output.exists():
         log(f"Cleaning smoke tests outputs directory... {args.output}")
         shutil.rmtree(args.output, ignore_errors=True)
 
@@ -583,17 +581,17 @@ def main() -> None:
         output_dir=args.output,
     )
     all_passed = tester.run_all()
-    keep_outputs = args.keep_outputs
+    clean_post_run = args.clean_post_run
     if not all_passed:
-        keep_outputs = True
+        clean_post_run = False
         log("Some tests failed. Outputs dir not cleaned.", Colors.YELLOW)
 
-    if not keep_outputs:
+    if clean_post_run:
         log(f"Cleaning smoke tests outputs directory... {args.output}")
         shutil.rmtree(args.output, ignore_errors=True)
 
-    if args.format:
-        tester.save_results(args.format, args.results)
+    if args.save_results_format:
+        tester.save_results(args.save_results_format, args.results)
 
     log("-" * SEPARATOR_LENGTH)
 

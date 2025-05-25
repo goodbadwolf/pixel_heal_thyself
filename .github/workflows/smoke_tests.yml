@@ -31,7 +31,7 @@ jobs:
 
       - name: Run smoke tests
         run: |
-          uv run python ./tests/smoke_tests.py --format json -o smoke_tests_results.json
+          uv run python ./tests/smoke_tests.py --save-results-format json -o smoke_tests_results.json --clean-pre-run --clean-post-run
 
       - name: Upload test results
         if: always()
@@ -63,12 +63,32 @@ jobs:
               let comment = `## ${emoji} Smoke Test Results\n\n`;
               comment += `**${passed}/${total}** tests passed\n\n`;
 
-              if (passed < total) {
-                comment += '### Failed Tests:\n';
-                results.filter(r => !r.success).forEach(r => {
-                  comment += `- ❌ ${r.test.name}: ${r.error ? r.error.split('\n')[0] : 'Unknown error'}\n`;
-                });
-              }
+              // Add summary of all tests
+              comment += '### Test Details:\n';
+              results.forEach(r => {
+                const status = r.success ? '✅' : '❌';
+                const duration = r.duration.toFixed(1);
+                comment += `- ${status} ${r.test.name} (${duration}s)\n`;
+                
+                if (r.success) {
+                  // Add metrics for successful tests
+                  if (r.metrics_error) {
+                    comment += `  - Metrics: ${r.metrics_error}\n`;
+                  }
+                  if (r.training_error) {
+                    comment += `  - Training: ${r.training_error}\n`;
+                  }
+                } else {
+                  // Add error details for failed tests
+                  comment += `  - Error: ${r.error ? r.error.split('\n')[0] : 'Unknown error'}\n`;
+                  if (r.metrics_error) {
+                    comment += `  - Metrics: ${r.metrics_error}\n`;
+                  }
+                  if (r.training_error) {
+                    comment += `  - Training: ${r.training_error}\n`;
+                  }
+                }
+              });
 
               await github.rest.issues.createComment({
                 issue_number: context.issue.number,
