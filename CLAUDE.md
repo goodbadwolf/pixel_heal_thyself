@@ -62,18 +62,19 @@ uv run python -m tests.smoke_tests
 
 #### Git Pre-push Hook
 
-A pre-push hook is installed that runs smoke tests before allowing pushes. This ensures code quality by preventing broken code from being pushed to the repository.
+A pre-push hook runs smoke tests before allowing pushes. This ensures code quality by preventing broken code from being pushed to the repository.
+
+To install the git hooks:
+```bash
+./setup/install-hooks.sh
+```
 
 To bypass the hook in emergencies (not recommended):
 ```bash
 git push --no-verify
 ```
 
-To manually install the hook if needed:
-```bash
-cp .git/hooks/pre-push.sample .git/hooks/pre-push
-chmod +x .git/hooks/pre-push
-```
+The hooks are stored in `setup/hooks/` and can be committed to the repository.
 
 ## Code Style Guidelines
 
