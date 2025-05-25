@@ -26,7 +26,7 @@ trainer:
 # File paths
 paths:
   root: ${hydra:runtime.cwd}
-  output_dir: ${pht_run_dirs:outputs_smoke_tests, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
+  output_dir: ${pht_run_dirs:outputs_smoke_tests, , ${hydra:sweep.subdir}, ${run_num}, false}
 
 logging:
   level: INFO
@@ -34,7 +34,7 @@ logging:
 # Hydra configuration
 hydra:
   run:
-    dir: ${pht_run_dirs:outputs_smoke_tests, ${_dir_base_pattern}, ${hydra:sweep.subdir}, ${run_num}, false}
+    dir: ${pht_run_dirs:outputs_smoke_tests, , ${hydra:sweep.subdir}, ${run_num}, false}
   job:
     chdir: false
     config:

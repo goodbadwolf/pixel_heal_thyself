@@ -55,7 +55,7 @@ def pht_run_dirs_resolver(
     is_multirun = is_truthy(cfg_is_multirun)
     job_subdir = None if is_none_or_empty(cfg_job_subdir) else Path(cfg_job_subdir)
     base_pattern = (
-        None if is_none_or_empty(cfg_base_pattern) else Path(cfg_base_pattern)
+        Path() if is_none_or_empty(cfg_base_pattern) else Path(cfg_base_pattern)
     )
 
     try:

@@ -10,6 +10,7 @@ import sys
 import time
 import traceback
 from dataclasses import dataclass, field
+from enum import Enum
 from functools import wraps
 from pathlib import Path
 from typing import Callable, TextIO
@@ -45,6 +46,12 @@ IS_GITHUB_ACTIONS = os.getenv("GITHUB_ACTIONS", "false").lower() == "true"
 DEFAULT_TIMEOUT = 300 if IS_CI else 60  # 5 minutes for CI, 1 minute for local
 
 
+class TestStatus(Enum):
+    PASSED = "passed"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
 @dataclass
 class TestConfig:
     name: str
@@ -55,7 +62,7 @@ class TestConfig:
 @dataclass
 class TestResult:
     test: TestConfig
-    success: bool
+    status: TestStatus
     duration: float
     error: str = None
     files_created: dict = field(default_factory=dict)
@@ -266,15 +273,18 @@ class SmokeTestsRunner:
             if "nan" in content.lower() or "inf" in content.lower():
                 return False, "Found NaN or Inf values in metrics"
 
-            mrse_match = self.MRSE_RE.search(content)
-            psnr_match = self.PSNR_RE.search(content)
-            ssim_match = self.SSIM_RE.search(content)
-            if not all([mrse_match, psnr_match, ssim_match]):
+            # Find all occurrences and use the last one
+            mrse_matches = list(self.MRSE_RE.finditer(content))
+            psnr_matches = list(self.PSNR_RE.finditer(content))
+            ssim_matches = list(self.SSIM_RE.finditer(content))
+
+            if not all([mrse_matches, psnr_matches, ssim_matches]):
                 return False, "Could not parse all metrics"
 
-            mrse = float(mrse_match.group(1))
-            psnr = float(psnr_match.group(1))
-            ssim_1minus = float(ssim_match.group(1))
+            # Use the last match for each metric
+            mrse = float(mrse_matches[-1].group(1))
+            psnr = float(psnr_matches[-1].group(1))
+            ssim_1minus = float(ssim_matches[-1].group(1))
 
             success, error = False, ""
             if mrse > MRSE_THRESHOLD:
@@ -321,7 +331,36 @@ class SmokeTestsRunner:
 
         return self.validate_file(loss_file, parse_training)
 
-    def run_test(  # noqa: PLR0912
+    def _validate_test_output(self, result: TestResult) -> None:
+        """Validate test output files and metrics."""
+        if self.output_dir.exists():
+            run_dirs = sorted(
+                self.output_dir.glob("**/runs/run*"),
+                key=lambda p: p.stat().st_mtime,
+            )
+            if run_dirs:
+                latest_run = run_dirs[-1]
+                log(
+                    f"Validating test output for {result.test.name} in "
+                    f"{Colors.BOLD}{Colors.GREEN}{latest_run}{Colors.ENDC}",
+                    Colors.BLUE,
+                )
+                result.files_created = self.check_output_files(latest_run)
+                result.metrics_valid, result.metrics_error = self.validate_metrics(
+                    latest_run,
+                )
+                result.training_valid, result.training_error = self.validate_training(
+                    latest_run,
+                )
+            else:
+                result.error = f"No run directories found in {self.output_dir}"
+        elif result.test.skip:
+            # For skipped tests, we don't validate metrics or training
+            pass
+        else:
+            result.error = f"{self.output_dir} directory not created"
+
+    def run_test(
         self,
         test: TestConfig,
     ) -> TestResult:
@@ -329,7 +368,12 @@ class SmokeTestsRunner:
         command_result: CommandResult | None = None
         if test.skip:
             log(f"Skipping {test.name}...", Colors.YELLOW)
-            result = TestResult(test=test, success=True, duration=0, error=None)
+            result = TestResult(
+                test=test,
+                status=TestStatus.SKIPPED,
+                duration=0,
+                error=None,
+            )
             command_result = CommandResult(success=True, output="", duration=0)
         else:
             log(f"\n{Colors.BOLD}Running {test.name}...{Colors.ENDC}")
@@ -351,41 +395,28 @@ class SmokeTestsRunner:
 
             result = TestResult(
                 test=test,
-                success=command_result.success,
+                status=TestStatus.PASSED
+                if command_result.success
+                else TestStatus.FAILED,
                 duration=command_result.duration,
                 error=None if command_result.success else command_result.output,
             )
 
-        if result.success:
-            if self.output_dir.exists():
-                run_dirs = sorted(
-                    self.output_dir.glob("**/run*"),
-                    key=lambda p: p.stat().st_mtime,
-                )
-                if run_dirs:
-                    latest_run = run_dirs[-1]
-                    result.files_created = self.check_output_files(latest_run)
-                    result.metrics_valid, result.metrics_error = self.validate_metrics(
-                        latest_run,
-                    )
-                    result.training_valid, result.training_error = (
-                        self.validate_training(latest_run)
-                    )
-                else:
-                    result.error = f"No run directories found in {self.output_dir}"
-            elif test.skip:
-                result.error = f"Test {test.name} was skipped"
-                result.metrics_valid = True
-                result.training_valid = True
-            else:
-                result.error = f"{self.output_dir} directory not created"
+        if result.status != TestStatus.FAILED:
+            self._validate_test_output(result)
 
-        if result.success and result.metrics_valid and result.training_valid:
+        if result.status == TestStatus.SKIPPED:
+            log(f"⊘ {test.name} skipped", Colors.YELLOW)
+        elif (
+            result.status == TestStatus.PASSED
+            and result.metrics_valid
+            and result.training_valid
+        ):
             log(f"✓ {test.name} passed ({command_result.duration:.1f}s)", Colors.GREEN)
         else:
             log(f"✗ {test.name} failed ({command_result.duration:.1f}s)", Colors.RED)
             log_github_action("error", f"Test {test.name} failed")
-            if result.success:
+            if result.status == TestStatus.PASSED:
                 if not result.metrics_valid:
                     log(
                         f"  Metrics: {result.metrics_error}",
@@ -435,12 +466,6 @@ class SmokeTestsRunner:
         ]"""
 
         for test in tests:
-            if self.output_dir.exists():
-                remove_dir(self.output_dir)
-                log(
-                    f"Cleaned output directory from previous test: {self.output_dir}",
-                    Colors.YELLOW,
-                )
             self.run_test(test)
 
         log_resource_usage()
@@ -450,28 +475,61 @@ class SmokeTestsRunner:
             [
                 r
                 for r in self.test_results
-                if not (r.success and r.metrics_valid and r.training_valid)
+                if r.status == TestStatus.FAILED
+                or (
+                    r.status == TestStatus.PASSED
+                    and not (r.metrics_valid and r.training_valid)
+                )
             ],
         )
 
         return failed_count == 0
 
-    def _count_tests_status(self, success: bool) -> int:
+    def _count_by_status(self, status: TestStatus) -> int:
+        if status == TestStatus.PASSED:
+            return sum(
+                1
+                for r in self.test_results
+                if r.status == TestStatus.PASSED
+                and r.metrics_valid
+                and r.training_valid
+            )
+        return sum(1 for r in self.test_results if r.status == status)
+
+    def _count_failed_validation(self) -> int:
         return sum(
             1
             for r in self.test_results
-            if (r.success == success) and r.metrics_valid and r.training_valid
+            if r.status == TestStatus.PASSED
+            and not (r.metrics_valid and r.training_valid)
         )
 
     def _print_failed_tests(self) -> None:
         log(f"\n{Colors.BOLD}Failed Tests:{Colors.ENDC}")
         for result in self.test_results:
-            if not result.success:
+            if result.status == TestStatus.FAILED or (
+                result.status == TestStatus.PASSED
+                and not (result.metrics_valid and result.training_valid)
+            ):
                 log(f"  - {result.test.name}:", Colors.RED)
-                first_line = (
-                    result.error.splitlines()[0] if result.error else "Unknown error"
-                )
-                log(f"    {first_line}", Colors.RED)
+                if result.status == TestStatus.FAILED:
+                    first_line = (
+                        result.error.splitlines()[0]
+                        if result.error
+                        else "Unknown error"
+                    )
+                    log(f"    {first_line}", Colors.RED)
+                else:
+                    if not result.metrics_valid:
+                        log(
+                            f"    Metrics validation failed: {result.metrics_error}",
+                            Colors.RED,
+                        )
+                    if not result.training_valid:
+                        log(
+                            f"    Training validation failed: {result.training_error}",
+                            Colors.RED,
+                        )
                 if IS_CI and result.error:
                     github_group_start(f"Full error: {result.test.name}")
                     log(result.error)
@@ -480,7 +538,7 @@ class SmokeTestsRunner:
     def _print_output_files_status(self) -> None:
         log(f"\n{Colors.BOLD}Output Files:{Colors.ENDC}")
         for result in self.test_results:
-            if result.success and result.files_created:
+            if result.status == TestStatus.PASSED and result.files_created:
                 missing = [
                     f for f, exists in result.files_created.items() if not exists
                 ]
@@ -500,7 +558,7 @@ class SmokeTestsRunner:
     ) -> None:
         log(f"\n{Colors.BOLD}{validation_type}:{Colors.ENDC}")
         for result in self.test_results:
-            if result.success:
+            if result.status == TestStatus.PASSED:
                 if getattr(result, validation_key):
                     log(
                         f"  - {result.test.name}: {getattr(result, error_key, 'Unknown')}",
@@ -512,10 +570,81 @@ class SmokeTestsRunner:
                         Colors.RED,
                     )
 
+    def _print_test_details(self) -> None:
+        """Print detailed results for each test."""
+        log(f"\n{Colors.BOLD}Test Details:{Colors.ENDC}")
+        log("-" * SEPARATOR_LENGTH)
+
+        for result in self.test_results:
+            # Test name and status
+            status_color = {
+                TestStatus.PASSED: Colors.GREEN,
+                TestStatus.FAILED: Colors.RED,
+                TestStatus.SKIPPED: Colors.YELLOW,
+            }.get(result.status, "")
+
+            status_symbol = {
+                TestStatus.PASSED: "✓",
+                TestStatus.FAILED: "✗",
+                TestStatus.SKIPPED: "⊘",
+            }.get(result.status, "?")
+
+            log(
+                f"\n{Colors.BOLD}{result.test.name}{Colors.ENDC} "
+                f"{status_color}{status_symbol} {result.status.value}{Colors.ENDC} "
+                f"({result.duration:.1f}s)",
+            )
+
+            # Skip details for skipped tests
+            if result.status == TestStatus.SKIPPED:
+                continue
+
+            # Command status for failed tests
+            if result.status == TestStatus.FAILED:
+                log(f"  Command: {Colors.RED}Failed{Colors.ENDC}")
+                if result.error:
+                    first_line = result.error.splitlines()[0]
+                    log(f"    {first_line}")
+                continue
+
+            # For passed tests, show validation details
+            if result.status == TestStatus.PASSED:
+                # Files created
+                if result.files_created:
+                    missing = [
+                        f for f, exists in result.files_created.items() if not exists
+                    ]
+                    if missing:
+                        log(
+                            f"  Files: {Colors.YELLOW}Missing {', '.join(missing)}{Colors.ENDC}",
+                        )
+                    else:
+                        log(f"  Files: {Colors.GREEN}All created ✓{Colors.ENDC}")
+
+                # Metrics validation
+                if result.metrics_valid:
+                    log(f"  Metrics: {Colors.GREEN}{result.metrics_error}{Colors.ENDC}")
+                else:
+                    log(
+                        f"  Metrics: {Colors.RED}{result.metrics_error or 'Validation failed'}{Colors.ENDC}",
+                    )
+
+                # Training validation
+                if result.training_valid:
+                    log(
+                        f"  Training: {Colors.GREEN}{result.training_error}{Colors.ENDC}",
+                    )
+                else:
+                    log(
+                        f"  Training: {Colors.RED}{result.training_error or 'Validation failed'}{Colors.ENDC}",
+                    )
+
     def print_summary(self) -> None:
         total_time = time.time() - self.start_time
-        passed = self._count_tests_status(True)
-        failed = self._count_tests_status(False)
+        passed = self._count_by_status(TestStatus.PASSED)
+        failed = self._count_by_status(TestStatus.FAILED)
+        failed_validation = self._count_failed_validation()
+        skipped = self._count_by_status(TestStatus.SKIPPED)
 
         github_group_start("Test Summary")
         log(f"\n{Colors.BOLD}Summary{Colors.ENDC}")
@@ -523,23 +652,17 @@ class SmokeTestsRunner:
 
         log(f"Total tests: {len(self.test_results)}")
         log(f"Passed: {passed} {Colors.GREEN}✓{Colors.ENDC}")
-        log(f"Failed: {failed} {Colors.RED}✗{Colors.ENDC}")
+        log(f"Failed: {failed + failed_validation} {Colors.RED}✗{Colors.ENDC}")
+        if failed_validation > 0:
+            log(f"  - Command failed: {failed}")
+            log(f"  - Validation failed: {failed_validation}")
+        log(f"Skipped: {skipped} {Colors.YELLOW}⊘{Colors.ENDC}")
         log(f"Total time: {total_time:.1f}s")
 
-        if failed > 0:
+        if failed > 0 or failed_validation > 0:
             self._print_failed_tests()
 
-        self._print_output_files_status()
-        self._print_validation_status(
-            "Metrics Validation",
-            "metrics_valid",
-            "metrics_error",
-        )
-        self._print_validation_status(
-            "Training Progress",
-            "training_valid",
-            "training_error",
-        )
+        self._print_test_details()
         github_group_end()
 
     def save_results(self, output_format: str, output_file: str) -> None:
@@ -549,6 +672,7 @@ class SmokeTestsRunner:
                 def result_to_dict(r: TestResult) -> dict:
                     d = r.__dict__.copy()
                     d["test"] = r.test.__dict__
+                    d["status"] = r.status.value
                     return d
 
                 json.dump([result_to_dict(r) for r in self.test_results], f, indent=2)
@@ -601,9 +725,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--skip-ci-tests",
-        default=["mamba_baseline"],
+        default=[],
         nargs="+",
-        choices=["afgsa_baseline", "mamba_baseline"],
         help="Skip tests that are hard to install and run on CI. Only applies when running on CI.",
     )
     args = parser.parse_args()
