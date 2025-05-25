@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Pre-push hook to run smoke tests before pushing
+# This prevents pushing code that fails basic smoke tests
+
+set -e # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+echo -e "${YELLOW}Running smoke tests before push...${NC}"
+
+# Change to repository root
+cd "$(git rev-parse --show-toplevel)"
+
+# Check if we're in CI environment - skip hook in CI
+if [ "$CI" = "true" ] || [ "$GITHUB_ACTIONS" = "true" ]; then
+    echo -e "${YELLOW}Skipping pre-push hook in CI environment${NC}"
+    exit 0
+fi
+
+# Check if smoke tests file exists
+if [ ! -f "tests/smoke_tests.py" ]; then
+    echo -e "${YELLOW}Warning: smoke_tests.py not found, skipping tests${NC}"
+    exit 0
+fi
+
+# Run smoke tests with minimal verbosity
+echo -e "${GREEN}Running PHT smoke tests...${NC}"
+if uv run python -m tests.smoke_tests --clean-pre-run --clean-post-run; then
+    echo -e "${GREEN}✓ All smoke tests passed!${NC}"
+    exit 0
+else
+    echo -e "${RED}✗ Smoke tests failed!${NC}"
+    echo -e "${RED}Push aborted. Please fix the failing tests before pushing.${NC}"
+    echo -e "${YELLOW}To skip this check (not recommended), use: git push --no-verify${NC}"
+    exit 1
+fi

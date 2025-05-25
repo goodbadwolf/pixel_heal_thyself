@@ -1,0 +1,114 @@
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  smoke-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install latest version of uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version-file: "pyproject.toml"
+
+      - name: Install dependencies
+        run: |
+          # Use CPU-only PyTorch packages on CI by overriding the index
+          # The pytorch-cu126 index in pyproject.toml is marked as explicit, so we need to override it
+          UV_INDEX_pytorch_cu126_URL="https://download.pytorch.org/whl/cpu" uv sync --locked --all-extras --dev
+
+      - name: Run smoke tests
+        run: |
+          uv run python ./tests/smoke_tests.py --verbose --save-results-format json -r smoke_tests_results.json --clean-pre-run --skip-ci-tests mamba_baseline
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-tests-results
+          path: |
+            smoke_tests_results.json
+            outputs_smoke_tests/runs/**/*.txt
+            outputs_smoke_tests/runs/**/*.log
+
+      - name: Comment PR with results
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            // Check if results file exists
+            if (!fs.existsSync('smoke_tests_results.json')) {
+              console.log('No test results file found, skipping comment');
+              return;
+            }
+
+            try {
+              const results = JSON.parse(fs.readFileSync('smoke_tests_results.json', 'utf8'));
+
+              const passed = results.filter(r => r.success).length;
+              const total = results.length;
+              const emoji = passed === total ? '✅' : '❌';
+
+              let comment = `## ${emoji} Smoke Test Results\n\n`;
+              comment += `**${passed}/${total}** tests passed\n\n`;
+
+              // Add summary of all tests
+              comment += '### Test Details:\n';
+              results.forEach(r => {
+                if (r.test.skip) {
+                  comment += `- ⏭️ ${r.test.name} (skipped)\n`;
+                  return;
+                }
+                else {
+                  const status = r.success ? '✅' : '❌';
+                  const duration = r.duration.toFixed(1);
+                  comment += `- ${status} ${r.test.name} (${duration}s)\n`;
+                }
+                
+                if (r.success) {
+                  // Add metrics for successful tests
+                  if (r.metrics_error) {
+                    comment += `  - Metrics: ${r.metrics_error}\n`;
+                  }
+                  if (r.training_error) {
+                    comment += `  - Training: ${r.training_error}\n`;
+                  }
+                } else {
+                  // Add error details for failed tests
+                  comment += `  - Error: ${r.error ? r.error.split('\n')[0] : 'Unknown error'}\n`;
+                  if (r.metrics_error) {
+                    comment += `  - Metrics: ${r.metrics_error}\n`;
+                  }
+                  if (r.training_error) {
+                    comment += `  - Training: ${r.training_error}\n`;
+                  }
+                }
+              });
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.error('Failed to comment on PR:', error);
+              // Don't fail the workflow if commenting fails
+            }

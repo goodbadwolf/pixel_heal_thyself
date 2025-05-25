@@ -8,7 +8,6 @@ from pht.hydra.plugins.pht_run_dirs_resolver import register_pht_run_dirs_resolv
 from pht.logger import logger
 from pht.models.afgsa.model import CurveOrder
 from pht.models.afgsa.train import AFGSATrainer
-from pht.models.mamba.train import MambaTrainer
 
 register_pht_run_dirs_resolver()
 
@@ -27,6 +26,7 @@ def main(hydra_cfg: DictConfig) -> None:
     if cfg.model.name == "afgsa":
         trainer = AFGSATrainer(cfg)
     elif cfg.model.name == "mamba":
+        from pht.models.mamba.train import MambaTrainer
         trainer = MambaTrainer(cfg)
     else:
         raise ValueError(f"Unsupported model: {cfg.model.name}")
