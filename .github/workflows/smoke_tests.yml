@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   smoke-tests:
     runs-on: ubuntu-latest
@@ -42,25 +46,37 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const results = JSON.parse(fs.readFileSync('smoke_tests_results.json', 'utf8'));
 
-            const passed = results.filter(r => r.success).length;
-            const total = results.length;
-            const emoji = passed === total ? '✅' : '❌';
-
-            let comment = `## ${emoji} Smoke Test Results\n\n`;
-            comment += `**${passed}/${total}** tests passed\n\n`;
-
-            if (passed < total) {
-              comment += '### Failed Tests:\n';
-              results.filter(r => !r.success).forEach(r => {
-                comment += `- ❌ ${r.name}\n`;
-              });
+            // Check if results file exists
+            if (!fs.existsSync('smoke_tests_results.json')) {
+              console.log('No test results file found, skipping comment');
+              return;
             }
 
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
+            try {
+              const results = JSON.parse(fs.readFileSync('smoke_tests_results.json', 'utf8'));
+
+              const passed = results.filter(r => r.success).length;
+              const total = results.length;
+              const emoji = passed === total ? '✅' : '❌';
+
+              let comment = `## ${emoji} Smoke Test Results\n\n`;
+              comment += `**${passed}/${total}** tests passed\n\n`;
+
+              if (passed < total) {
+                comment += '### Failed Tests:\n';
+                results.filter(r => !r.success).forEach(r => {
+                  comment += `- ❌ ${r.test.name}: ${r.error ? r.error.split('\n')[0] : 'Unknown error'}\n`;
+                });
+              }
+
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            } catch (error) {
+              console.error('Failed to comment on PR:', error);
+              // Don't fail the workflow if commenting fails
+            }

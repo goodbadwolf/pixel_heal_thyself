@@ -53,6 +53,28 @@ uv run python -m pht.train -cn dev trainer.epochs=10 model=mamba
 - Results are saved in the `outputs/` directory under run-specific folders
 - Each run folder contains `evaluation.txt` with metrics
 
+#### Smoke Tests
+
+Run smoke tests to verify basic functionality:
+```bash
+uv run python -m tests.smoke_tests
+```
+
+#### Git Pre-push Hook
+
+A pre-push hook is installed that runs smoke tests before allowing pushes. This ensures code quality by preventing broken code from being pushed to the repository.
+
+To bypass the hook in emergencies (not recommended):
+```bash
+git push --no-verify
+```
+
+To manually install the hook if needed:
+```bash
+cp .git/hooks/pre-push.sample .git/hooks/pre-push
+chmod +x .git/hooks/pre-push
+```
+
 ## Code Style Guidelines
 
 ### Imports
