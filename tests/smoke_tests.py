@@ -49,7 +49,7 @@ DEFAULT_TIMEOUT = 300 if IS_CI else 60  # 5 minutes for CI, 1 minute for local
 class TestConfig:
     name: str
     overrides: list[str] = field(default_factory=list)
-    enabled: bool = field(default=True)
+    skip: bool = field(default=False)
 
 
 @dataclass
@@ -327,7 +327,7 @@ class SmokeTestsRunner:
     ) -> TestResult:
         result: TestResult | None = None
         command_result: CommandResult | None = None
-        if not test.enabled:
+        if test.skip:
             log(f"Skipping {test.name}...", Colors.YELLOW)
             result = TestResult(test=test, success=True, duration=0, error=None)
             command_result = CommandResult(success=True, output="", duration=0)
@@ -373,8 +373,8 @@ class SmokeTestsRunner:
                     )
                 else:
                     result.error = f"No run directories found in {self.output_dir}"
-            elif not test.enabled:
-                result.error = f"Test {test.name} was disabled"
+            elif test.skip:
+                result.error = f"Test {test.name} was skipped"
                 result.metrics_valid = True
                 result.training_valid = True
             else:
@@ -421,7 +421,7 @@ class SmokeTestsRunner:
         ]
 
         for test in tests:
-            test.enabled = test.name not in tests_to_skip
+            test.skip = test.name in tests_to_skip
 
         # TODO: Fix these tests - they complete but don't produce expected outputs
         """[

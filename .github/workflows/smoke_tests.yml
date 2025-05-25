@@ -69,9 +69,15 @@ jobs:
               // Add summary of all tests
               comment += '### Test Details:\n';
               results.forEach(r => {
-                const status = r.success ? '✅' : '❌';
-                const duration = r.duration.toFixed(1);
-                comment += `- ${status} ${r.test.name} (${duration}s)\n`;
+                if (r.test.skip) {
+                  comment += `- ⏭️ ${r.test.name} (skipped)\n`;
+                  return;
+                }
+                else {
+                  const status = r.success ? '✅' : '❌';
+                  const duration = r.duration.toFixed(1);
+                  comment += `- ${status} ${r.test.name} (${duration}s)\n`;
+                }
                 
                 if (r.success) {
                   // Add metrics for successful tests
@@ -91,6 +97,7 @@ jobs:
                     comment += `  - Training: ${r.training_error}\n`;
                   }
                 }
+              }
               });
 
               await github.rest.issues.createComment({
